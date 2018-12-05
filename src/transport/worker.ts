@@ -1,5 +1,6 @@
 import { Transport, MesssagePayload } from './transport'
 import EventEmitter from './EventEmitter'
+import { hash } from '../utils'
 
 const EVENT_CONNECTED = 'CONNECTED'
 const EVENT_PONG = 'PONG'
@@ -7,38 +8,73 @@ const EVENT_PING = 'PING'
 const EVENT_BECOME_MASTER = 'BECOME_MASTER'
 const EVENT_DESTORY = 'DESTROY'
 const EVENT_MESSAGE = 'MESSAGE'
+const EVENT_SYNC = 'SYNC'
+const MAX_TRY_TIME = 4
 
 export default class WorkerTransport extends EventEmitter implements Transport {
-  public worker?: SharedWorker.SharedWorker
-  public ready: boolean = false
+  ready: boolean = false
+  destroyed: boolean = false
+  private tryTimes: number = 0
+  private worker?: SharedWorker.SharedWorker
   private pendingQueue: any[] = []
 
   constructor() {
     super()
-    this.worker = new SharedWorker(this.genSource())
-    this.worker.port.addEventListener('message', this.onMessage)
-    this.worker.port.start()
+    this.initializeWorker()
     window.addEventListener('unload', () => {
       this.destroy()
     })
   }
 
   send(data: any) {
-    if (this.ready) {
-      this.worker!.port.postMessage({ type: EVENT_MESSAGE, data })
+    if (this.ready && this.worker != null) {
+      this.worker.port.postMessage({ type: EVENT_MESSAGE, data })
     } else {
       this.pendingQueue.push(data)
     }
   }
 
   destroy() {
+    if (this.destroyed) {
+      return
+    }
+
     window.removeEventListener('unload', this.destroy)
     this.ready = false
+    this.destroyed = true
     if (this.worker) {
       this.worker.port.removeEventListener('message', this.onMessage)
       this.worker.port.postMessage({ type: EVENT_DESTORY })
       this.worker = undefined
     }
+  }
+
+  private initializeWorker = () => {
+    if (this.tryTimes >= MAX_TRY_TIME) {
+      return
+    }
+
+    this.tryTimes++
+
+    try {
+      this.worker = new SharedWorker(this.genSource())
+    } catch (err) {
+      console.warn('[itc] SharedWorker Error: ', err)
+      this.initializeWorker()
+      return
+    }
+
+    this.worker.onerror = this.handleWorkerError
+    this.worker.port.addEventListener('message', this.onMessage)
+    this.worker.port.start()
+  }
+
+  private handleWorkerError = (evt: ErrorEvent) => {
+    const { filename, lineno, colno, message } = evt
+    console.warn(`[itc] SharedWorker Error in ${filename}(${lineno}:${colno}): ${message}`)
+    delete this.worker!.onerror
+    this.worker = undefined
+    this.initializeWorker()
   }
 
   private onMessage = (evt: MessageEvent) => {
@@ -71,8 +107,17 @@ export default class WorkerTransport extends EventEmitter implements Transport {
   }
 
   private genSource() {
-    const source = workerSource.toString()
-    return URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
+    const source = `(${workerSource.toString()})()`
+    const sourceHash = hash(source)
+    const key = `itc-sw-${sourceHash}`
+    let cachedUrl = window.localStorage.getItem(key)
+    if (cachedUrl) {
+      return cachedUrl
+    } else {
+      const cachedUrl = `data:text/javascript;base64,${btoa(source)}`
+      window.localStorage.setItem(key, cachedUrl)
+      return cachedUrl
+    }
   }
 }
 
@@ -126,9 +171,9 @@ function workerSource(this: SharedWorker.SharedWorkerGlobalScope) {
     }, 500)
   }
 
-  this.onconnect = function(evt) {
-    const port = evt.ports[0]
-    port.onmessage = function(evt) {
+  this.addEventListener('connect', function(event: Event) {
+    const port = (event as MessageEvent).ports[0]
+    port.addEventListener('message', function(evt: MessageEvent) {
       const message = evt.data as MesssagePayload
       switch (message.type) {
         case EVENT_PONG:
@@ -143,13 +188,12 @@ function workerSource(this: SharedWorker.SharedWorkerGlobalScope) {
           // forward to other ports
           broadcast(message)
       }
-    }
+    })
 
     ports.push(port)
     port.start()
     port.postMessage(EVENT_CONNECTED)
     checkMaster()
-  }
-
+  })
   heartbeat()
 }

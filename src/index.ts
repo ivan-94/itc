@@ -1,3 +1,5 @@
 import { Transport, Worker } from './transport'
 
-export default new Worker() as Transport
+export default function create() {
+  return new Worker() as Transport
+}

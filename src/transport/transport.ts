@@ -23,6 +23,7 @@ export interface Transport {
    * emit custom event
    */
   emit(event: string, data?: any): void
+  destroyed: boolean
   /**
    * destroy
    */
