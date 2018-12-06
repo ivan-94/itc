@@ -4,9 +4,7 @@
   "description": "inter-tabs-communication",
   "main": "dist/index.js",
   "scripts": {
-    "prebuild": "rm -rf dist",
-    "build": "tsc",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "node ./build"
   },
   "files": [
     "dist"

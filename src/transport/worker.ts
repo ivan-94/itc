@@ -1,34 +1,63 @@
-import { Transport, MesssagePayload } from './transport'
-import EventEmitter from './EventEmitter'
+import EventEmitter from './event-emitter'
 import { hash } from '../utils'
+import { Transport, MesssagePayload, Peer, EVENTS } from './transport'
+import workerSource from './worker-source'
 
-const EVENT_CONNECTED = 'CONNECTED'
-const EVENT_PONG = 'PONG'
-const EVENT_PING = 'PING'
-const EVENT_BECOME_MASTER = 'BECOME_MASTER'
-const EVENT_DESTORY = 'DESTROY'
-const EVENT_MESSAGE = 'MESSAGE'
-const EVENT_SYNC = 'SYNC'
 const MAX_TRY_TIME = 4
 
 export default class WorkerTransport extends EventEmitter implements Transport {
+  name?: string
   ready: boolean = false
   destroyed: boolean = false
+  private url?: string
   private tryTimes: number = 0
+  private peers?: Peer[]
   private worker?: SharedWorker.SharedWorker
   private pendingQueue: any[] = []
+  private cmds: {
+    [cmd: string]: Array<(data: any) => void>
+  } = {}
 
-  constructor() {
+  constructor(url?: string) {
     super()
+    this.url = url
     this.initializeWorker()
     window.addEventListener('unload', () => {
       this.destroy()
     })
   }
 
+  async getPeers() {
+    this.checkWorkerAvailable()
+    if (this.peers == null) {
+      return new Promise<Peer[]>(res => {
+        this.call(EVENTS.GET_PEERS, undefined, res)
+      })
+    }
+    return this.peers
+  }
+
+  async getMaster() {
+    this.checkWorkerAvailable()
+    return new Promise<Peer>(res => {
+      this.call(EVENTS.GET_MASTER, undefined, res)
+    })
+  }
+
+  setName(name: string) {
+    this.checkWorkerAvailable()
+    this.name = name
+    this.worker!.port.postMessage({ type: EVENTS.SETNAME, data: name })
+  }
+
+  getName() {
+    return this.name
+  }
+
   send(data: any) {
+    this.checkWorkerAvailable()
     if (this.ready && this.worker != null) {
-      this.worker.port.postMessage({ type: EVENT_MESSAGE, data })
+      this.worker.port.postMessage({ type: EVENTS.MESSAGE, data })
     } else {
       this.pendingQueue.push(data)
     }
@@ -42,10 +71,39 @@ export default class WorkerTransport extends EventEmitter implements Transport {
     window.removeEventListener('unload', this.destroy)
     this.ready = false
     this.destroyed = true
+
     if (this.worker) {
       this.worker.port.removeEventListener('message', this.onMessage)
-      this.worker.port.postMessage({ type: EVENT_DESTORY })
+      this.worker.port.postMessage({ type: EVENTS.DESTORY })
       this.worker = undefined
+    }
+  }
+
+  private checkWorkerAvailable() {
+    if (this.destroyed) {
+      throw new Error('itc: cannot send message. current worker was destroyed.')
+    }
+  }
+
+  /**
+   * rpc 调用workers 方法
+   */
+  private call(name: string, data: any, callback: (data: any) => void) {
+    this.checkWorkerAvailable()
+    if (this.cmds[name]) {
+      this.cmds[name].push(callback)
+    } else {
+      this.cmds[name] = [callback]
+    }
+
+    this.worker!.port.postMessage({ type: name, data })
+  }
+
+  private response(name: string, data: any) {
+    if (this.cmds[name]) {
+      const queue = this.cmds[name]
+      this.cmds[name] = []
+      queue.forEach(cb => cb(data))
     }
   }
 
@@ -81,19 +139,30 @@ export default class WorkerTransport extends EventEmitter implements Transport {
     const message = evt.data as MesssagePayload
     const port = this.worker!.port
     switch (message.type) {
-      case EVENT_PING:
-        port.postMessage({ type: EVENT_PONG })
+      case EVENTS.PING:
+        port.postMessage({ type: EVENTS.PONG })
         break
-      case EVENT_BECOME_MASTER:
+      case EVENTS.BECOME_MASTER:
         this.emit('master')
         break
-      case EVENT_CONNECTED:
+      case EVENTS.CONNECTED:
         this.ready = true
         this.emit('ready')
         this.flushPendingQueue()
         break
-      default:
+      case EVENTS.MESSAGE:
         this.emit('message', message.data)
+        break
+      case EVENTS.UPDATE_PEERS:
+        this.peers = message.data
+        this.emit('peerupdate', this.peers)
+        break
+      case EVENTS.UPDATE_MASTER:
+        const master = message.data
+        this.emit('masterupdate', master)
+        break
+      default:
+        this.response(message.type, message.data)
         break
     }
   }
@@ -107,7 +176,10 @@ export default class WorkerTransport extends EventEmitter implements Transport {
   }
 
   private genSource() {
-    const source = `(${workerSource.toString()})()`
+    if (this.url) {
+      return this.url
+    }
+    const source = `(${workerSource.toString()})(${JSON.stringify(EVENTS)})`
     const sourceHash = hash(source)
     const key = `itc-sw-${sourceHash}`
     let cachedUrl = window.localStorage.getItem(key)
@@ -119,81 +191,4 @@ export default class WorkerTransport extends EventEmitter implements Transport {
       return cachedUrl
     }
   }
-}
-
-function workerSource(this: SharedWorker.SharedWorkerGlobalScope) {
-  const EVENT_CONNECTED = 'CONNECTED'
-  const EVENT_PONG = 'PONG'
-  const EVENT_PING = 'PING'
-  const EVENT_BECOME_MASTER = 'BECOME_MASTER'
-  const EVENT_DESTORY = 'DESTROY'
-  const ports: MessagePort[] = []
-  let master: MessagePort | undefined
-
-  function checkMaster() {
-    if (master == null && ports.length) {
-      master = ports[0]
-      master.postMessage({ type: EVENT_BECOME_MASTER })
-    }
-  }
-
-  function removePort(port: MessagePort) {
-    const index = ports.indexOf(port)
-    if (index !== -1) {
-      ports.splice(index, 1)
-    }
-
-    if (master === port) {
-      master = undefined
-    }
-  }
-
-  function broadcast(data: MesssagePayload) {
-    ports.forEach(port => port.postMessage(data))
-  }
-
-  function heartbeat() {
-    setTimeout(() => {
-      let i = ports.length
-      while (i--) {
-        const port = ports[i]
-        // @ts-ignore
-        if (port.zoombie) {
-          removePort(port)
-        } else {
-          // @ts-ignore
-          port.zoombie = true
-          port.postMessage({ type: EVENT_PING })
-        }
-      }
-      checkMaster()
-      heartbeat()
-    }, 500)
-  }
-
-  this.addEventListener('connect', function(event: Event) {
-    const port = (event as MessageEvent).ports[0]
-    port.addEventListener('message', function(evt: MessageEvent) {
-      const message = evt.data as MesssagePayload
-      switch (message.type) {
-        case EVENT_PONG:
-          // @ts-ignore
-          port.zoombie = false
-          break
-        case EVENT_DESTORY:
-          removePort(port)
-          checkMaster()
-          break
-        default:
-          // forward to other ports
-          broadcast(message)
-      }
-    })
-
-    ports.push(port)
-    port.start()
-    port.postMessage(EVENT_CONNECTED)
-    checkMaster()
-  })
-  heartbeat()
 }

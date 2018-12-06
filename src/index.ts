@@ -1,5 +1,13 @@
-import { Transport, Worker } from './transport'
+import { Transport, Peer, MesssagePayload, Disposer, Worker } from './transport'
 
-export default function create() {
-  return new Worker() as Transport
+let instance: Transport
+
+export { Transport, Peer, Disposer, Worker }
+
+export default function create(options: { url?: string } = {}): Transport {
+  if (instance && !instance.destroyed) {
+    return instance
+  }
+
+  return (instance = new Worker(options.url) as Transport)
 }
