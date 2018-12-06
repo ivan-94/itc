@@ -9,8 +9,8 @@
   "files": [
     "dist"
   ],
-  "author": "",
-  "license": "ISC",
+  "author": "ivan",
+  "license": "MIT",
   "prettier": {
     "semi": false,
     "singleQuote": true,
@@ -39,5 +39,19 @@
     "@types/sharedworker": "^0.0.28",
     "typescript": "^3.2.1"
   },
-  "dependencies": {}
+  "dependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/carney520/itc.git"
+  },
+  "keywords": [
+    "sharedworker",
+    "ipc",
+    "browser-tabs",
+    "tabs-communicate"
+  ],
+  "bugs": {
+    "url": "https://github.com/carney520/itc/issues"
+  },
+  "homepage": "https://github.com/carney520/itc#readme"
 }
