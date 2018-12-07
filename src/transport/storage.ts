@@ -10,28 +10,22 @@
  *   + NS_master 表示当前的master, 所有tabs都向它发送消息
  *   + NS_message 用于消息传递
  * ## message 载荷规范
- * + target: id, 接收者id, 非接收者应该忽略掉
- * + type: 类型
- * + data: 消息类型
+ * + target: id, 接收者id, 非接收者应该忽略掉. *表示广播
+ * + data: 消息类型, 包含type(事件名), data(事件载荷)
+ * + source: 消息源
+ *
+ * TODO: 兼容性
  */
 import { uuid, delay, getRandomIntInclusive, objEquals } from '../utils'
 
 import { Transport, Peer, MesssagePayload, EVENTS } from './transport'
 import EventEmmiter from './event-emitter'
 
-interface PeerInfo {
+interface PeerInfo extends Peer {
   /**
    * 最后更新时间, 用于检测是否离线
    */
   lastUpdate: number
-  /**
-   * peer唯一id
-   */
-  id: number | string
-  /**
-   * peer 名称
-   */
-  name?: string
 }
 
 interface StoragePayload {
@@ -42,6 +36,7 @@ interface StoragePayload {
 
 const NAMESPACE = '_ITC_'
 const HEART_BEAT = 2500
+const MASTER_HEART_BEAT = 1000
 const ZOOMBIE_THRESHOLD = 4000
 /**
  * NAMESPACE.type.desc
@@ -51,14 +46,15 @@ const BroadcastPeer = { id: '*', name: 'broadcast' }
 
 export default class StorageTransport extends EventEmmiter implements Transport {
   destroyed: boolean = false
+  name: string
   private id = uuid()
   private masterHeartBeatTimer?: number
   private heartBeatTimer?: number
   private peers: PeerInfo[] = []
   private currentMaster?: Peer
-  private name?: string
   private ready: boolean = false
   private pendingPreempt?: () => void
+  private pendingQueue: Array<{ peer: Peer; data: any }> = []
   private callbacks: {
     [id: string]: Array<(data: any) => void>
   } = {}
@@ -68,8 +64,9 @@ export default class StorageTransport extends EventEmmiter implements Transport 
     return { id: this.id, name: this.name }
   }
 
-  constructor() {
+  constructor(name: string) {
     super()
+    this.name = name
     console.log('current', this.id)
     this.connect()
   }
@@ -79,6 +76,7 @@ export default class StorageTransport extends EventEmmiter implements Transport 
       return
     }
     this.destroyed = true
+    this.ready = false
     window.removeEventListener('storage', this.onStorage)
     window.removeEventListener('unload', this.destroy)
     if (this.heartBeatTimer) {
@@ -92,7 +90,14 @@ export default class StorageTransport extends EventEmmiter implements Transport 
     // TODO: destroy events
   }
 
-  send(data: any, peer?: Peer) {}
+  send(data: any, peer: Peer = BroadcastPeer) {
+    if (!this.ready) {
+      this.pendingQueue.push({ peer, data })
+      return
+    }
+
+    this.postMessage(peer, { type: EVENTS.MESSAGE, data })
+  }
 
   getMaster() {
     return Promise.resolve(this.currentMaster!)
@@ -100,14 +105,6 @@ export default class StorageTransport extends EventEmmiter implements Transport 
 
   getPeers() {
     return Promise.resolve(this.peers)
-  }
-
-  setName() {
-    this.name = this.name
-  }
-
-  getName() {
-    return this.name
   }
 
   private onStorage = (evt: StorageEvent) => {
@@ -176,7 +173,13 @@ export default class StorageTransport extends EventEmmiter implements Transport 
     this.heartbeat()
     this.ready = true
     this.emit('ready')
-    // TODO: flush queue
+    this.flushPendingQueue()
+  }
+
+  private flushPendingQueue() {
+    const queue = this.pendingQueue
+    this.pendingQueue = []
+    queue.forEach(q => this.send(q.data, q.peer))
   }
 
   /**
@@ -305,7 +308,7 @@ export default class StorageTransport extends EventEmmiter implements Transport 
           await delay()
         }
       }
-    }, 1000)
+    }, MASTER_HEART_BEAT)
   }
 
   /**
