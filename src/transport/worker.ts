@@ -1,3 +1,6 @@
+/**
+ * TODO: 处理因调试断开
+ */
 import EventEmitter from './event-emitter'
 import { hash } from '../utils'
 import { Transport, MesssagePayload, Peer, EVENTS } from './transport'
@@ -253,6 +256,22 @@ export function workerSource(this: SharedWorker.SharedWorkerGlobalScope, events:
     ports.forEach(port => port.postMessage(data))
   }
 
+  function postMessage(data: WorkerPayload) {
+    if (data.target == null || data.target === '*') {
+      broadcast(data)
+      return
+    }
+
+    if (data.target === -1) {
+      return
+    }
+
+    const idx = ports.findIndex(i => i.id === data.target)
+    if (idx !== -1) {
+      ports[idx].postMessage(data)
+    }
+  }
+
   function heartbeat() {
     setTimeout(() => {
       let i = ports.length
@@ -275,15 +294,14 @@ export function workerSource(this: SharedWorker.SharedWorkerGlobalScope, events:
     port.id = uid++
 
     port.addEventListener('message', function(evt: MessageEvent) {
-      const message = evt.data as MesssagePayload
+      const message = evt.data as WorkerPayload
       switch (message.type) {
         case events.PONG:
           port.zoombie = false
           break
         case events.MESSAGE:
           // forward to other ports
-          // TODO: 精确转发
-          broadcast(message)
+          postMessage(message)
           break
         case events.DESTORY:
           removePort(port)
@@ -307,7 +325,7 @@ export function workerSource(this: SharedWorker.SharedWorkerGlobalScope, events:
           break
         default:
           // forward to other ports
-          broadcast(message)
+          postMessage(message)
           break
       }
     })
