@@ -2,23 +2,13 @@ export type Disposer = () => void
 
 export interface Peer {
   id: string | number
-  name?: string
+  name: string
 }
 
 export interface Transport {
   // meta datas
-  /**
-   * set worker name
-   */
-  setName(name: string): void
-  /**
-   * get worker name
-   */
-  getName(): string | undefined
-  /**
-   * listen custom events
-   */
-  on(event: string, handler: (data: any) => void): Disposer
+  readonly name?: string
+  readonly destroyed: boolean
   /**
    * listen message | master event
    */
@@ -36,12 +26,6 @@ export interface Transport {
    * send message to other tabs
    */
   send(data: any, peer?: Peer): void
-  /**
-   * emit custom event
-   */
-  emit(event: string, data?: any): void
-
-  destroyed: boolean
 
   /**
    * destroy

@@ -1,26 +1,47 @@
 import EventEmitter from './event-emitter'
 import { hash } from '../utils'
 import { Transport, MesssagePayload, Peer, EVENTS } from './transport'
-import workerSource from './worker-source'
+
+interface WorkerPayload extends MesssagePayload {
+  target: string | number
+  source: Peer
+}
+
+const BroadcastPeer = {
+  id: '*',
+  name: 'broadcast',
+}
+
+const WorkerPeer = {
+  id: -1,
+  name: 'worker',
+}
 
 const MAX_TRY_TIME = 4
 
 export default class WorkerTransport extends EventEmitter implements Transport {
-  name?: string
+  name: string
   ready: boolean = false
   destroyed: boolean = false
-  private url?: string
   private tryTimes: number = 0
+  private id: number = 0
   private peers?: Peer[]
   private worker?: SharedWorker.SharedWorker
-  private pendingQueue: any[] = []
+  private pendingQueue: Array<{ data: any; peer?: Peer }> = []
   private cmds: {
     [cmd: string]: Array<(data: any) => void>
   } = {}
 
-  constructor(url?: string) {
+  private get current() {
+    return {
+      id: this.id,
+      name: this.name,
+    }
+  }
+
+  constructor(name: string) {
     super()
-    this.url = url
+    this.name = name
     this.initializeWorker()
     window.addEventListener('unload', this.destroy)
   }
@@ -42,22 +63,13 @@ export default class WorkerTransport extends EventEmitter implements Transport {
     })
   }
 
-  setName(name: string) {
+  // TODO: peer
+  send(data: any, peer: Peer = BroadcastPeer) {
     this.checkWorkerAvailable()
-    this.name = name
-    this.worker!.port.postMessage({ type: EVENTS.SETNAME, data: name })
-  }
-
-  getName() {
-    return this.name
-  }
-
-  send(data: any) {
-    this.checkWorkerAvailable()
-    if (this.ready && this.worker != null) {
-      this.worker.port.postMessage({ type: EVENTS.MESSAGE, data })
+    if (this.ready) {
+      this.postMessage(peer, { type: EVENTS.MESSAGE, data })
     } else {
-      this.pendingQueue.push(data)
+      this.pendingQueue.push({ peer, data })
     }
   }
 
@@ -72,7 +84,7 @@ export default class WorkerTransport extends EventEmitter implements Transport {
 
     if (this.worker) {
       this.worker.port.removeEventListener('message', this.onMessage)
-      this.worker.port.postMessage({ type: EVENTS.DESTORY })
+      this.postMessage(WorkerPeer, { type: EVENTS.DESTORY })
       this.worker = undefined
     }
   }
@@ -94,7 +106,7 @@ export default class WorkerTransport extends EventEmitter implements Transport {
       this.cmds[name] = [callback]
     }
 
-    this.worker!.port.postMessage({ type: name, data })
+    this.postMessage(WorkerPeer, { type: name, data })
   }
 
   private response(name: string, data: any) {
@@ -138,12 +150,14 @@ export default class WorkerTransport extends EventEmitter implements Transport {
     const port = this.worker!.port
     switch (message.type) {
       case EVENTS.PING:
-        port.postMessage({ type: EVENTS.PONG })
+        this.postMessage(WorkerPeer, { type: EVENTS.PONG })
         break
       case EVENTS.BECOME_MASTER:
         this.emit('master')
         break
       case EVENTS.CONNECTED:
+        this.id = message.data
+        this.postMessage(WorkerPeer, { type: EVENTS.SETNAME, data: this.name })
         this.ready = true
         this.emit('ready')
         this.flushPendingQueue()
@@ -168,15 +182,21 @@ export default class WorkerTransport extends EventEmitter implements Transport {
   private flushPendingQueue() {
     const queue = this.pendingQueue
     this.pendingQueue = []
-    queue.forEach(data => {
-      this.send(data)
+    queue.forEach(d => {
+      this.send(d.data, d.peer)
     })
   }
 
-  private genSource() {
-    if (this.url) {
-      return this.url
+  private postMessage(peer: Peer, data: MesssagePayload) {
+    const payload: WorkerPayload = {
+      target: peer.id,
+      source: this.current,
+      ...data,
     }
+    this.worker!.port.postMessage(payload)
+  }
+
+  private genSource() {
     const source = `(${workerSource.toString()})(${JSON.stringify(EVENTS)})`
     const sourceHash = hash(source)
     const key = `itc-sw-${sourceHash}`
@@ -189,4 +209,114 @@ export default class WorkerTransport extends EventEmitter implements Transport {
       return cachedUrl
     }
   }
+}
+
+export function workerSource(this: SharedWorker.SharedWorkerGlobalScope, events: typeof EVENTS) {
+  type ExtendedPort = MessagePort & { zoombie: boolean; id: number; name?: string }
+  const ports: ExtendedPort[] = []
+  let master: ExtendedPort | undefined
+  let uid: number = 0
+
+  function checkMaster() {
+    if (master == null && ports.length) {
+      master = ports[0]
+      master.postMessage({ type: events.BECOME_MASTER })
+      broadcast({ type: events.UPDATE_MASTER, data: { id: master.id, name: master.name } })
+    }
+  }
+
+  function removePort(port: ExtendedPort) {
+    const index = ports.indexOf(port)
+    if (index !== -1) {
+      ports.splice(index, 1)
+    }
+
+    if (master === port) {
+      master = undefined
+    }
+
+    updatePeer()
+  }
+
+  /**
+   * sync peers
+   */
+  function updatePeer() {
+    ports.forEach(port => {
+      // TODO:
+      const peers = ports.filter(p => p !== port).map(p => ({ id: p.id, name: p.name }))
+      port.postMessage({ type: events.UPDATE_PEERS, data: peers })
+    })
+  }
+
+  function broadcast(data: MesssagePayload) {
+    ports.forEach(port => port.postMessage(data))
+  }
+
+  function heartbeat() {
+    setTimeout(() => {
+      let i = ports.length
+      while (i--) {
+        const port = ports[i]
+        if (port.zoombie) {
+          removePort(port)
+        } else {
+          port.zoombie = true
+          port.postMessage({ type: events.PING })
+        }
+      }
+      checkMaster()
+      heartbeat()
+    }, 500)
+  }
+
+  this.addEventListener('connect', function(event: Event) {
+    const port = (event as MessageEvent).ports[0] as ExtendedPort
+    port.id = uid++
+
+    port.addEventListener('message', function(evt: MessageEvent) {
+      const message = evt.data as MesssagePayload
+      switch (message.type) {
+        case events.PONG:
+          port.zoombie = false
+          break
+        case events.MESSAGE:
+          // forward to other ports
+          // TODO: 精确转发
+          broadcast(message)
+          break
+        case events.DESTORY:
+          removePort(port)
+          checkMaster()
+          break
+        case events.SETNAME:
+          port.name = message.data
+          updatePeer()
+          break
+        case events.GET_PEERS:
+          port.postMessage({
+            type: events.GET_PEERS,
+            data: ports.filter(p => p !== port).map(p => ({ id: p.id, name: p.name })),
+          })
+          break
+        case events.GET_MASTER:
+          port.postMessage({
+            type: events.GET_MASTER,
+            data: { id: master!.id, name: master!.name },
+          })
+          break
+        default:
+          // forward to other ports
+          broadcast(message)
+          break
+      }
+    })
+
+    ports.push(port)
+    port.start()
+    port.postMessage({ type: events.CONNECTED, data: port.id })
+    checkMaster()
+    updatePeer()
+  })
+  heartbeat()
 }
