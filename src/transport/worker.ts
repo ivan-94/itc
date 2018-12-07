@@ -22,9 +22,7 @@ export default class WorkerTransport extends EventEmitter implements Transport {
     super()
     this.url = url
     this.initializeWorker()
-    window.addEventListener('unload', () => {
-      this.destroy()
-    })
+    window.addEventListener('unload', this.destroy)
   }
 
   async getPeers() {
@@ -63,7 +61,7 @@ export default class WorkerTransport extends EventEmitter implements Transport {
     }
   }
 
-  destroy() {
+  destroy = () => {
     if (this.destroyed) {
       return
     }
@@ -100,7 +98,7 @@ export default class WorkerTransport extends EventEmitter implements Transport {
   }
 
   private response(name: string, data: any) {
-    if (this.cmds[name]) {
+    if (this.cmds[name] && this.cmds[name].length) {
       const queue = this.cmds[name]
       this.cmds[name] = []
       queue.forEach(cb => cb(data))

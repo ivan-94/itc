@@ -1,10 +1,14 @@
 {
-  "name": "itc",
+  "name": "@carney520/itc",
   "version": "0.1.0",
   "description": "inter-tabs-communication",
   "main": "dist/index.js",
   "scripts": {
     "build": "node ./build"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
   },
   "files": [
     "dist"

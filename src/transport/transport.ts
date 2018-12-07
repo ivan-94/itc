@@ -1,7 +1,7 @@
 export type Disposer = () => void
 
 export interface Peer {
-  id: string
+  id: string | number
   name?: string
 }
 
@@ -24,6 +24,7 @@ export interface Transport {
    */
   on(event: 'ready', handler: () => void): Disposer
   on(event: 'master', handler: () => void): Disposer
+  on(event: 'masterlose', handler: () => void): Disposer
   on(event: 'message', handler: (data: any) => void): Disposer
   on(event: 'peerupdate', handler: (data: Peer[]) => void): Disposer
   on(event: 'masterupdate', handler: (data: Peer) => void): Disposer
@@ -60,10 +61,11 @@ export interface Transport {
 
 export interface MesssagePayload {
   type: string
-  data: any
+  data?: any
 }
 
 export const EVENTS = {
+  CONNECT: 'CONNECT',
   CONNECTED: 'CONNECTED',
   PONG: 'PONG',
   PING: 'PING',
@@ -71,9 +73,12 @@ export const EVENTS = {
   DESTORY: 'DESTROY',
   MESSAGE: 'MESSAGE',
   SETNAME: 'SET_NAME',
-  GET_PEERS: 'GET_PEERS',
-  GET_MASTER: 'GET_MASTER',
   UPDATE_PEERS: 'UPDATE_PEERS',
   UPDATE_MASTER: 'UPDATE_MASTER',
   SYNC: 'SYNC',
+
+  // duplex
+  GET_PEERS: 'GET_PEERS',
+  GET_MASTER: 'GET_MASTER',
+  CHECK_ALIVE: 'CHECK_ALIVE',
 }
