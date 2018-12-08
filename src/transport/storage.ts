@@ -15,7 +15,6 @@
  * + source: 消息源
  *
  * TODO: 兼容性
- * TODO: check available
  */
 import { uuid, delay, getRandomIntInclusive, objEquals } from '../utils'
 
@@ -90,16 +89,14 @@ export default class StorageTransport extends EventEmmiter implements Transport 
     this.currentMaster = undefined
   }
 
-  // TODO: 延迟
   getMaster() {
     this.checkWorkerAvailable()
-    return Promise.resolve(this.currentMaster!)
+    return this.waitReady().then(() => this.currentMaster)
   }
 
-  // TODO: 延迟
   getPeers() {
     this.checkWorkerAvailable()
-    return Promise.resolve(this.peers)
+    return this.waitReady().then(() => this.peers)
   }
 
   private initializeInnerHandler() {

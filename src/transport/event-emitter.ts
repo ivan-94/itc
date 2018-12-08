@@ -30,6 +30,7 @@ export default abstract class EventEmitter {
     [name: string]: CallHandler
   } = {}
   private pendingQueue: Array<{ peer: Peer; data: any }> = []
+  private watchingReady: Array<() => void> = []
 
   constructor(name: string) {
     this.name = name
@@ -105,6 +106,16 @@ export default abstract class EventEmitter {
   }
 
   protected abstract postMessage(peer: Peer, message: MesssagePayload): void
+
+  protected waitReady() {
+    return new Promise(res => {
+      if (this.ready) {
+        return
+      } else {
+        this.watchingReady.push(res)
+      }
+    })
+  }
 
   protected callInternal(peer: Peer, name: string, args: any[], timeout?: number): Promise<any> {
     return new Promise((res, rej) => {
@@ -213,5 +224,9 @@ export default abstract class EventEmitter {
     const queue = this.pendingQueue
     this.pendingQueue = []
     queue.forEach(q => this.send(q.data, q.peer))
+
+    const watchingReady = this.watchingReady
+    this.watchingReady = []
+    watchingReady.forEach(q => q())
   }
 }

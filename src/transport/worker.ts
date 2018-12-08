@@ -48,16 +48,14 @@ export default class WorkerTransport extends EventEmitter implements Transport {
     window.addEventListener('unload', this.destroy)
   }
 
-  // TODO: 延迟
   getPeers() {
     this.checkWorkerAvailable()
-    return Promise.resolve(this.peers)
+    return this.waitReady().then(() => this.peers)
   }
 
-  // TODO: 延迟
   getMaster() {
     this.checkWorkerAvailable()
-    return Promise.resolve(this.currentMaster)
+    return this.waitReady().then(() => this.currentMaster)
   }
 
   destroy = () => {
