@@ -1,7 +1,6 @@
 /**
  * 利用SharedWorker进行多页面通信
  * TODO: 健壮错误处理
- * TODO: 减少peerupdate 触发频率
  */
 import EventEmitter from './event-emitter'
 import { hash } from '../utils'
@@ -16,6 +15,10 @@ interface InitializeState {
   id: number
   peers: Peer[]
   master: Peer
+}
+
+interface PeerInitialState {
+  name: string
 }
 
 const WorkerPeer = {
@@ -122,10 +125,13 @@ export default class WorkerTransport extends EventEmitter implements Transport {
         break
       case EVENTS.CONNECTED:
         const { id, peers, master } = data as InitializeState
+        const initialState: PeerInitialState = {
+          name: this.name,
+        }
         this.id = id
         this.peers = peers
         this.currentMaster = master
-        this.postMessage(WorkerPeer, { type: EVENTS.SETNAME, data: this.name })
+        this.postMessage(WorkerPeer, { type: EVENTS.INITIAL, data: initialState })
         this.emit('ready')
         console.log('ready')
         break
@@ -298,8 +304,9 @@ export function workerSource(this: SharedWorker.SharedWorkerGlobalScope, events:
         case events.DESTORY:
           removePort(port)
           break
-        case events.SETNAME:
-          port.name = message.data
+        case events.INITIAL:
+          const { name } = message.data as PeerInitialState
+          port.name = name
           updatePeer()
           break
         default:
@@ -322,7 +329,7 @@ export function workerSource(this: SharedWorker.SharedWorkerGlobalScope, events:
       data: initialState,
     })
     checkMaster()
-    updatePeer()
   })
+
   heartbeat()
 }
