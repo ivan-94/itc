@@ -10,11 +10,6 @@ interface WorkerPayload extends MesssagePayload {
   source: Peer
 }
 
-const BroadcastPeer = {
-  id: '*',
-  name: 'broadcast',
-}
-
 const WorkerPeer = {
   id: -1,
   name: 'worker',
@@ -23,14 +18,10 @@ const WorkerPeer = {
 const MAX_TRY_TIME = 4
 
 export default class WorkerTransport extends EventEmitter implements Transport {
-  name: string
-  ready: boolean = false
-  destroyed: boolean = false
   private tryTimes: number = 0
   private id: number = 0
   private peers?: Peer[]
   private worker?: SharedWorker.SharedWorker
-  private pendingQueue: Array<{ data: any; peer?: Peer }> = []
   private cmds: {
     [cmd: string]: Array<(data: any) => void>
   } = {}
@@ -43,8 +34,7 @@ export default class WorkerTransport extends EventEmitter implements Transport {
   }
 
   constructor(name: string) {
-    super()
-    this.name = name
+    super(name)
     this.initializeWorker()
     window.addEventListener('unload', this.destroy)
   }
@@ -53,7 +43,7 @@ export default class WorkerTransport extends EventEmitter implements Transport {
     this.checkWorkerAvailable()
     if (this.peers == null) {
       return new Promise<Peer[]>(res => {
-        this.call(EVENTS.GET_PEERS, undefined, res)
+        this.callWorker(EVENTS.GET_PEERS, undefined, res)
       })
     }
     return this.peers
@@ -62,18 +52,8 @@ export default class WorkerTransport extends EventEmitter implements Transport {
   async getMaster() {
     this.checkWorkerAvailable()
     return new Promise<Peer>(res => {
-      this.call(EVENTS.GET_MASTER, undefined, res)
+      this.callWorker(EVENTS.GET_MASTER, undefined, res)
     })
-  }
-
-  // TODO: peer
-  send(data: any, peer: Peer = BroadcastPeer) {
-    this.checkWorkerAvailable()
-    if (this.ready) {
-      this.postMessage(peer, { type: EVENTS.MESSAGE, data })
-    } else {
-      this.pendingQueue.push({ peer, data })
-    }
   }
 
   destroy = () => {
@@ -82,8 +62,7 @@ export default class WorkerTransport extends EventEmitter implements Transport {
     }
 
     window.removeEventListener('unload', this.destroy)
-    this.ready = false
-    this.destroyed = true
+    this.emit('destroy')
 
     if (this.worker) {
       this.worker.port.removeEventListener('message', this.onMessage)
@@ -92,16 +71,10 @@ export default class WorkerTransport extends EventEmitter implements Transport {
     }
   }
 
-  private checkWorkerAvailable() {
-    if (this.destroyed) {
-      throw new Error('itc: cannot send message. current worker was destroyed.')
-    }
-  }
-
   /**
    * rpc 调用workers 方法
    */
-  private call(name: string, data: any, callback: (data: any) => void) {
+  private callWorker(name: string, data: any, callback: (data: any) => void) {
     this.checkWorkerAvailable()
     if (this.cmds[name]) {
       this.cmds[name].push(callback)
@@ -112,7 +85,7 @@ export default class WorkerTransport extends EventEmitter implements Transport {
     this.postMessage(WorkerPeer, { type: name, data })
   }
 
-  private response(name: string, data: any) {
+  private responseWorker(name: string, data: any) {
     if (this.cmds[name] && this.cmds[name].length) {
       const queue = this.cmds[name]
       this.cmds[name] = []
@@ -149,9 +122,9 @@ export default class WorkerTransport extends EventEmitter implements Transport {
   }
 
   private onMessage = (evt: MessageEvent) => {
-    const message = evt.data as MesssagePayload
-    const port = this.worker!.port
-    switch (message.type) {
+    const message = evt.data as WorkerPayload
+    const { target, source, type, data } = message
+    switch (type) {
       case EVENTS.PING:
         this.postMessage(WorkerPeer, { type: EVENTS.PONG })
         break
@@ -159,38 +132,34 @@ export default class WorkerTransport extends EventEmitter implements Transport {
         this.emit('master')
         break
       case EVENTS.CONNECTED:
-        this.id = message.data
+        this.id = data
         this.postMessage(WorkerPeer, { type: EVENTS.SETNAME, data: this.name })
-        this.ready = true
         this.emit('ready')
-        this.flushPendingQueue()
         break
       case EVENTS.MESSAGE:
-        this.emit('message', message.data)
+        this.emit('message', data)
+        break
+      case EVENTS.CALL:
+        this.responseInternal(source, data)
+        break
+      case EVENTS.CALL_RESPONSE:
+        this.callReturn(source, data.data)
         break
       case EVENTS.UPDATE_PEERS:
-        this.peers = message.data
+        this.peers = data
         this.emit('peerupdate', this.peers)
         break
       case EVENTS.UPDATE_MASTER:
-        const master = message.data
+        const master = data
         this.emit('masterupdate', master)
         break
       default:
-        this.response(message.type, message.data)
+        this.responseWorker(type, data)
         break
     }
   }
 
-  private flushPendingQueue() {
-    const queue = this.pendingQueue
-    this.pendingQueue = []
-    queue.forEach(d => {
-      this.send(d.data, d.peer)
-    })
-  }
-
-  private postMessage(peer: Peer, data: MesssagePayload) {
+  protected postMessage(peer: Peer, data: MesssagePayload) {
     const payload: WorkerPayload = {
       target: peer.id,
       source: this.current,

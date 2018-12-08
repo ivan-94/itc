@@ -9,6 +9,7 @@ export interface Transport {
   // meta datas
   readonly name?: string
   readonly destroyed: boolean
+  setCallTimeout(time: number): void
   /**
    * listen message | master event
    */
@@ -26,6 +27,15 @@ export interface Transport {
    * send message to other tabs
    */
   send(data: any, peer?: Peer): void
+  /**
+   * call function on other tab
+   */
+  call(peer: Peer, name: string, ...args: any[]): Promise<any>
+
+  /**
+   * response call
+   */
+  response(name: string, handler: (peer: Peer, ...args: any[]) => Promise<any>): void
 
   /**
    * destroy
@@ -43,13 +53,12 @@ export interface Transport {
   getPeers(): Promise<Peer[]>
 }
 
-export interface MesssagePayload {
+export interface MesssagePayload<T = any> {
   type: string
-  data?: any
+  data?: T
 }
 
 export const EVENTS = {
-  CONNECT: 'CONNECT',
   CONNECTED: 'CONNECTED',
   PONG: 'PONG',
   PING: 'PING',
@@ -59,10 +68,24 @@ export const EVENTS = {
   SETNAME: 'SET_NAME',
   UPDATE_PEERS: 'UPDATE_PEERS',
   UPDATE_MASTER: 'UPDATE_MASTER',
-  SYNC: 'SYNC',
 
   // duplex
+  CALL: 'CALL',
+  CALL_RESPONSE: 'CALL_RESPONSE',
   GET_PEERS: 'GET_PEERS',
   GET_MASTER: 'GET_MASTER',
+}
+
+export const ERRORS = {
+  NOT_FOUND: 'NOT_FOUND',
+  IGNORED: 'IGNORED',
+}
+
+export const INNER_CALL = {
   CHECK_ALIVE: 'CHECK_ALIVE',
+}
+
+export const BroadcastPeer = {
+  id: '*',
+  name: 'broadcast',
 }

@@ -15,10 +15,11 @@
  * + source: 消息源
  *
  * TODO: 兼容性
+ * TODO: check available
  */
 import { uuid, delay, getRandomIntInclusive, objEquals } from '../utils'
 
-import { Transport, Peer, MesssagePayload, EVENTS } from './transport'
+import { Transport, Peer, MesssagePayload, BroadcastPeer, EVENTS, INNER_CALL, ERRORS } from './transport'
 import EventEmmiter from './event-emitter'
 
 interface PeerInfo extends Peer {
@@ -42,22 +43,16 @@ const ZOOMBIE_THRESHOLD = 4000
  * NAMESPACE.type.desc
  */
 const EVENT_REGEXP = new RegExp(`^${NAMESPACE}\\.([^\\.]*)(\\.(.*))?$`)
-const BroadcastPeer = { id: '*', name: 'broadcast' }
+let uid = 0
 
 export default class StorageTransport extends EventEmmiter implements Transport {
-  destroyed: boolean = false
-  name: string
   private id = uuid()
   private masterHeartBeatTimer?: number
   private heartBeatTimer?: number
   private peers: PeerInfo[] = []
   private currentMaster?: Peer
-  private ready: boolean = false
   private pendingPreempt?: () => void
-  private pendingQueue: Array<{ peer: Peer; data: any }> = []
-  private callbacks: {
-    [id: string]: Array<(data: any) => void>
-  } = {}
+
   private storage = window.localStorage
 
   private get current(): Peer {
@@ -65,9 +60,9 @@ export default class StorageTransport extends EventEmmiter implements Transport 
   }
 
   constructor(name: string) {
-    super()
-    this.name = name
+    super(name)
     console.log('current', this.id)
+    this.initializeInnerHandler()
     this.connect()
   }
 
@@ -75,8 +70,7 @@ export default class StorageTransport extends EventEmmiter implements Transport 
     if (this.destroyed) {
       return
     }
-    this.destroyed = true
-    this.ready = false
+    this.emit('destroy')
     window.removeEventListener('storage', this.onStorage)
     window.removeEventListener('unload', this.destroy)
     if (this.heartBeatTimer) {
@@ -90,21 +84,21 @@ export default class StorageTransport extends EventEmmiter implements Transport 
     // TODO: destroy events
   }
 
-  send(data: any, peer: Peer = BroadcastPeer) {
-    if (!this.ready) {
-      this.pendingQueue.push({ peer, data })
-      return
-    }
-
-    this.postMessage(peer, { type: EVENTS.MESSAGE, data })
-  }
-
   getMaster() {
     return Promise.resolve(this.currentMaster!)
   }
 
   getPeers() {
     return Promise.resolve(this.peers)
+  }
+
+  private initializeInnerHandler() {
+    this.response(INNER_CALL.CHECK_ALIVE, () => {
+      if (this.currentMaster && this.currentMaster.id === this.id) {
+        return Promise.resolve()
+      }
+      return Promise.reject(ERRORS.IGNORED)
+    })
   }
 
   private onStorage = (evt: StorageEvent) => {
@@ -148,19 +142,14 @@ export default class StorageTransport extends EventEmmiter implements Transport 
       case EVENTS.PONG:
         this.updatePeer(source)
         break
-      case EVENTS.CONNECT:
-        this.postMessage(source, { type: EVENTS.CONNECTED })
+      case EVENTS.CALL:
+        this.responseInternal(source, data.data)
         break
-      case EVENTS.CHECK_ALIVE:
-        // 只有master才能响应
-        if (this.currentMaster && this.currentMaster.id === this.id) {
-          this.postMessage(source, { type: EVENTS.CHECK_ALIVE })
-        } else {
-          this.response(data)
-        }
+      case EVENTS.CALL_RESPONSE:
+        this.callReturn(source, data.data)
         break
       default:
-        this.response(data)
+        this.emit('message', data.data)
         break
     }
   }
@@ -171,15 +160,7 @@ export default class StorageTransport extends EventEmmiter implements Transport 
     window.addEventListener('unload', this.destroy)
     await this.checkMaster()
     this.heartbeat()
-    this.ready = true
     this.emit('ready')
-    this.flushPendingQueue()
-  }
-
-  private flushPendingQueue() {
-    const queue = this.pendingQueue
-    this.pendingQueue = []
-    queue.forEach(q => this.send(q.data, q.peer))
   }
 
   /**
@@ -238,7 +219,7 @@ export default class StorageTransport extends EventEmmiter implements Transport 
 
       try {
         // 检查是否存活
-        await this.call(master, EVENTS.CHECK_ALIVE, undefined, 1000)
+        await this.callInternal(master, INNER_CALL.CHECK_ALIVE, [], 1000)
         console.log('master existed', master.id, this.id)
         this.currentMaster = master
       } catch (err) {
@@ -289,7 +270,7 @@ export default class StorageTransport extends EventEmmiter implements Transport 
       for (let i = 0; i < retryTimes; i++) {
         try {
           currentMaster = this.currentMaster!
-          await this.call(this.currentMaster!, EVENTS.CHECK_ALIVE, undefined, 1000)
+          await this.callInternal(this.currentMaster!, INNER_CALL.CHECK_ALIVE, [], 1000)
           this.masterHeartBeat()
           break
         } catch (err) {
@@ -368,48 +349,7 @@ export default class StorageTransport extends EventEmmiter implements Transport 
     }
   }
 
-  private call(peer: Peer, name: string, data: any, timeout?: number): Promise<any> {
-    return new Promise((res, rej) => {
-      let fullfilled = false
-
-      const resolver = (data: any) => {
-        if (fullfilled) {
-          return
-        }
-        fullfilled = true
-        res(data)
-      }
-
-      if (this.callbacks[name]) {
-        this.callbacks[name].push(resolver)
-      } else {
-        this.callbacks[name] = [resolver]
-      }
-
-      this.postMessage(peer, { type: name, data })
-
-      if (timeout != null) {
-        setTimeout(() => {
-          if (fullfilled) {
-            return
-          }
-          fullfilled = true
-          rej(new Error('timeout'))
-        }, timeout)
-      }
-    })
-  }
-
-  private response(message: MesssagePayload) {
-    const { type, data } = message
-    if (this.callbacks[type] && this.callbacks[type].length) {
-      const queue = this.callbacks[type]
-      this.callbacks[type] = []
-      queue.forEach(res => res(data))
-    }
-  }
-
-  private postMessage(peer: Peer, data: MesssagePayload) {
+  protected postMessage(peer: Peer, data: MesssagePayload) {
     if (peer.id === this.id) {
       return
     }
