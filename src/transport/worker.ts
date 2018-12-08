@@ -1,5 +1,6 @@
 /**
- * TODO: 处理因调试断开
+ * 利用SharedWorker进行多页面通信
+ * TODO: 健壮错误处理
  */
 import EventEmitter from './event-emitter'
 import { hash } from '../utils'
@@ -8,6 +9,12 @@ import { Transport, MesssagePayload, Peer, EVENTS } from './transport'
 interface WorkerPayload extends MesssagePayload {
   target: string | number
   source: Peer
+}
+
+interface InitializeState {
+  id: number
+  peers: Peer[]
+  master: Peer
 }
 
 const WorkerPeer = {
@@ -20,11 +27,9 @@ const MAX_TRY_TIME = 4
 export default class WorkerTransport extends EventEmitter implements Transport {
   private tryTimes: number = 0
   private id: number = 0
-  private peers?: Peer[]
+  private currentMaster?: Peer
+  private peers: Peer[] = []
   private worker?: SharedWorker.SharedWorker
-  private cmds: {
-    [cmd: string]: Array<(data: any) => void>
-  } = {}
 
   private get current() {
     return {
@@ -39,21 +44,16 @@ export default class WorkerTransport extends EventEmitter implements Transport {
     window.addEventListener('unload', this.destroy)
   }
 
-  async getPeers() {
+  // TODO: 延迟
+  getPeers() {
     this.checkWorkerAvailable()
-    if (this.peers == null) {
-      return new Promise<Peer[]>(res => {
-        this.callWorker(EVENTS.GET_PEERS, undefined, res)
-      })
-    }
-    return this.peers
+    return Promise.resolve(this.peers)
   }
 
-  async getMaster() {
+  // TODO: 延迟
+  getMaster() {
     this.checkWorkerAvailable()
-    return new Promise<Peer>(res => {
-      this.callWorker(EVENTS.GET_MASTER, undefined, res)
-    })
+    return Promise.resolve(this.currentMaster)
   }
 
   destroy = () => {
@@ -68,28 +68,6 @@ export default class WorkerTransport extends EventEmitter implements Transport {
       this.worker.port.removeEventListener('message', this.onMessage)
       this.postMessage(WorkerPeer, { type: EVENTS.DESTORY })
       this.worker = undefined
-    }
-  }
-
-  /**
-   * rpc 调用workers 方法
-   */
-  private callWorker(name: string, data: any, callback: (data: any) => void) {
-    this.checkWorkerAvailable()
-    if (this.cmds[name]) {
-      this.cmds[name].push(callback)
-    } else {
-      this.cmds[name] = [callback]
-    }
-
-    this.postMessage(WorkerPeer, { type: name, data })
-  }
-
-  private responseWorker(name: string, data: any) {
-    if (this.cmds[name] && this.cmds[name].length) {
-      const queue = this.cmds[name]
-      this.cmds[name] = []
-      queue.forEach(cb => cb(data))
     }
   }
 
@@ -124,6 +102,11 @@ export default class WorkerTransport extends EventEmitter implements Transport {
   private onMessage = (evt: MessageEvent) => {
     const message = evt.data as WorkerPayload
     const { target, source, type, data } = message
+
+    if (source && source.id === this.id) {
+      return
+    }
+
     switch (type) {
       case EVENTS.PING:
         this.postMessage(WorkerPeer, { type: EVENTS.PONG })
@@ -132,7 +115,10 @@ export default class WorkerTransport extends EventEmitter implements Transport {
         this.emit('master')
         break
       case EVENTS.CONNECTED:
-        this.id = data
+        const { id, peers, master } = data as InitializeState
+        this.id = id
+        this.peers = peers
+        this.currentMaster = master
         this.postMessage(WorkerPeer, { type: EVENTS.SETNAME, data: this.name })
         this.emit('ready')
         break
@@ -150,16 +136,24 @@ export default class WorkerTransport extends EventEmitter implements Transport {
         this.emit('peerupdate', this.peers)
         break
       case EVENTS.UPDATE_MASTER:
-        const master = data
-        this.emit('masterupdate', master)
+        const prevMaster = this.currentMaster
+        this.currentMaster = data
+        if (prevMaster && prevMaster.id === this.id && prevMaster.id !== this.currentMaster!.id) {
+          this.emit('masterlose')
+        }
+        this.emit('masterupdate', this.currentMaster)
         break
       default:
-        this.responseWorker(type, data)
+        console.warn(`[itc] unknown events: ${type}`)
         break
     }
   }
 
   protected postMessage(peer: Peer, data: MesssagePayload) {
+    if (peer.id === this.id) {
+      return
+    }
+
     const payload: WorkerPayload = {
       target: peer.id,
       source: this.current,
@@ -183,8 +177,11 @@ export default class WorkerTransport extends EventEmitter implements Transport {
   }
 }
 
+/**
+ * worker 源代码
+ */
 export function workerSource(this: SharedWorker.SharedWorkerGlobalScope, events: typeof EVENTS) {
-  type ExtendedPort = MessagePort & { zoombie: boolean; id: number; name?: string }
+  type ExtendedPort = MessagePort & { zoombie: boolean; id: number; name: string }
   const ports: ExtendedPort[] = []
   let master: ExtendedPort | undefined
   let uid: number = 0
@@ -208,6 +205,7 @@ export function workerSource(this: SharedWorker.SharedWorkerGlobalScope, events:
     }
 
     updatePeer()
+    checkMaster()
   }
 
   /**
@@ -215,10 +213,13 @@ export function workerSource(this: SharedWorker.SharedWorkerGlobalScope, events:
    */
   function updatePeer() {
     ports.forEach(port => {
-      // TODO:
-      const peers = ports.filter(p => p !== port).map(p => ({ id: p.id, name: p.name }))
+      const peers = getPeers(port)
       port.postMessage({ type: events.UPDATE_PEERS, data: peers })
     })
+  }
+
+  function getPeers(port: ExtendedPort) {
+    return ports.filter(p => p.id !== port.id).map(p => ({ id: p.id, name: p.name }))
   }
 
   function broadcast(data: MesssagePayload) {
@@ -253,7 +254,6 @@ export function workerSource(this: SharedWorker.SharedWorkerGlobalScope, events:
           port.postMessage({ type: events.PING })
         }
       }
-      checkMaster()
       heartbeat()
     }, 500)
   }
@@ -263,6 +263,13 @@ export function workerSource(this: SharedWorker.SharedWorkerGlobalScope, events:
     port.id = uid++
 
     port.addEventListener('message', function(evt: MessageEvent) {
+      // reconnect
+      if (ports.indexOf(port) === -1) {
+        ports.push(port)
+        checkMaster()
+        updatePeer()
+      }
+
       const message = evt.data as WorkerPayload
       switch (message.type) {
         case events.PONG:
@@ -274,23 +281,10 @@ export function workerSource(this: SharedWorker.SharedWorkerGlobalScope, events:
           break
         case events.DESTORY:
           removePort(port)
-          checkMaster()
           break
         case events.SETNAME:
           port.name = message.data
           updatePeer()
-          break
-        case events.GET_PEERS:
-          port.postMessage({
-            type: events.GET_PEERS,
-            data: ports.filter(p => p !== port).map(p => ({ id: p.id, name: p.name })),
-          })
-          break
-        case events.GET_MASTER:
-          port.postMessage({
-            type: events.GET_MASTER,
-            data: { id: master!.id, name: master!.name },
-          })
           break
         default:
           // forward to other ports
@@ -301,7 +295,15 @@ export function workerSource(this: SharedWorker.SharedWorkerGlobalScope, events:
 
     ports.push(port)
     port.start()
-    port.postMessage({ type: events.CONNECTED, data: port.id })
+    const initialState: InitializeState = {
+      id: port.id,
+      peers: getPeers(port),
+      master: master || port,
+    }
+    port.postMessage({
+      type: events.CONNECTED,
+      data: initialState,
+    })
     checkMaster()
     updatePeer()
   })

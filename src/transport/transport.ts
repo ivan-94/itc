@@ -45,7 +45,7 @@ export interface Transport {
   /**
    * get current Master
    */
-  getMaster(): Promise<Peer>
+  getMaster(): Promise<Peer | undefined>
 
   /**
    * get all other tabs(peers)
@@ -72,8 +72,6 @@ export const EVENTS = {
   // duplex
   CALL: 'CALL',
   CALL_RESPONSE: 'CALL_RESPONSE',
-  GET_PEERS: 'GET_PEERS',
-  GET_MASTER: 'GET_MASTER',
 }
 
 export const ERRORS = {
