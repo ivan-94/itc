@@ -16,6 +16,7 @@
  *
  * TODO: 兼容性
  * TODO: check available
+ * TODO: immediate ping
  */
 import { uuid, delay, getRandomIntInclusive, objEquals } from '../utils'
 

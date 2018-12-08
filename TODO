@@ -1,0 +1,8 @@
+[] localStorage fallback
+[*] peer
+[] channel
+[] pending queue
+[] 可能因为调试误删
+[] 移除async 依赖
+[] onmaster 如果是master立即返回
+[] worker masterlose
