@@ -1,6 +1,7 @@
 /**
  * 利用SharedWorker进行多页面通信
  * TODO: 健壮错误处理
+ * TODO: 减少peerupdate 触发频率
  */
 import EventEmitter from './event-emitter'
 import { hash } from '../utils'
@@ -86,16 +87,20 @@ export default class WorkerTransport extends EventEmitter implements Transport {
       return
     }
 
-    this.worker.onerror = this.handleWorkerError
+    this.worker.addEventListener('error', this.handleWorkerError)
     this.worker.port.addEventListener('message', this.onMessage)
     this.worker.port.start()
   }
 
-  private handleWorkerError = (evt: ErrorEvent) => {
-    const { filename, lineno, colno, message } = evt
+  private handleWorkerError = (evt: Event) => {
+    const { filename, lineno, colno, message } = evt as ErrorEvent
     console.warn(`[itc] SharedWorker Error in ${filename}(${lineno}:${colno}): ${message}`)
-    delete this.worker!.onerror
-    this.worker = undefined
+    if (this.worker) {
+      delete this.worker!.onerror
+      this.worker.port.removeEventListener('message', this.onMessage)
+      this.worker.removeEventListener('error', this.handleWorkerError)
+      this.worker = undefined
+    }
     this.initializeWorker()
   }
 
@@ -113,6 +118,7 @@ export default class WorkerTransport extends EventEmitter implements Transport {
         break
       case EVENTS.BECOME_MASTER:
         this.emit('master')
+        console.log('master')
         break
       case EVENTS.CONNECTED:
         const { id, peers, master } = data as InitializeState
@@ -121,6 +127,7 @@ export default class WorkerTransport extends EventEmitter implements Transport {
         this.currentMaster = master
         this.postMessage(WorkerPeer, { type: EVENTS.SETNAME, data: this.name })
         this.emit('ready')
+        console.log('ready')
         break
       case EVENTS.MESSAGE:
         this.emit('message', data)
@@ -134,14 +141,17 @@ export default class WorkerTransport extends EventEmitter implements Transport {
       case EVENTS.UPDATE_PEERS:
         this.peers = data
         this.emit('peerupdate', this.peers)
+        console.log('peer update')
         break
       case EVENTS.UPDATE_MASTER:
         const prevMaster = this.currentMaster
         this.currentMaster = data
         if (prevMaster && prevMaster.id === this.id && prevMaster.id !== this.currentMaster!.id) {
+          console.log('master lose')
           this.emit('masterlose')
         }
         this.emit('masterupdate', this.currentMaster)
+        console.log('master update')
         break
       default:
         console.warn(`[itc] unknown events: ${type}`)
@@ -268,6 +278,12 @@ export function workerSource(this: SharedWorker.SharedWorkerGlobalScope, events:
         ports.push(port)
         checkMaster()
         updatePeer()
+        // force update master
+        postMessage({
+          target: port.id,
+          type: events.UPDATE_MASTER,
+          data: { id: master!.id, name: master!.name },
+        } as WorkerPayload)
       }
 
       const message = evt.data as WorkerPayload
@@ -295,10 +311,11 @@ export function workerSource(this: SharedWorker.SharedWorkerGlobalScope, events:
 
     ports.push(port)
     port.start()
+    const currentMaster = master || port
     const initialState: InitializeState = {
       id: port.id,
       peers: getPeers(port),
-      master: master || port,
+      master: { name: currentMaster.name, id: currentMaster.id },
     }
     port.postMessage({
       type: events.CONNECTED,
