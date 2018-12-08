@@ -46,6 +46,7 @@ export interface Transport {
    * get current Master
    */
   getMaster(): Promise<Peer | undefined>
+  isMaster(): Promise<boolean>
 
   /**
    * get all other tabs(peers)

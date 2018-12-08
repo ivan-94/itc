@@ -94,6 +94,12 @@ export default class StorageTransport extends EventEmmiter implements Transport 
     return this.waitReady().then(() => this.currentMaster)
   }
 
+  isMaster() {
+    return this.getMaster().then(master => {
+      return !!master && master.id === this.id
+    })
+  }
+
   getPeers() {
     this.checkWorkerAvailable()
     return this.waitReady().then(() => this.peers)

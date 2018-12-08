@@ -43,6 +43,17 @@ export default abstract class EventEmitter {
       this.ready = false
       this.destroyed = true
     })
+
+    this.on('eventadded', (desc: { event: string; handle: Handler }) => {
+      switch (desc.event) {
+        case 'ready':
+          this.ready && desc.handle(undefined)
+          break
+        case 'master':
+          this.ready && this.isMaster().then(yes => yes && desc.handle(undefined))
+          break
+      }
+    })
   }
 
   on(event: string, handle: Handler) {
@@ -50,6 +61,10 @@ export default abstract class EventEmitter {
       this.queue[event].push(handle)
     } else {
       this.queue[event] = [handle]
+    }
+
+    if (event !== 'eventadded') {
+      this.emit('eventadded', { event, handle })
     }
 
     return () => {
@@ -105,6 +120,7 @@ export default abstract class EventEmitter {
     this.handlers[name] = handler
   }
 
+  abstract isMaster(): Promise<boolean>
   protected abstract postMessage(peer: Peer, message: MesssagePayload): void
 
   protected waitReady() {
