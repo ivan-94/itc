@@ -2,13 +2,13 @@ import { Peer, BroadcastPeer, MesssagePayload, EVENTS, ERRORS } from './transpor
 
 export type Handler = (data: any) => void
 type CallHandler = (peer: Peer, ...args: any[]) => Promise<any>
-interface CallPayload {
+export interface CallPayload {
   name: string
   id: number
   args: any[]
 }
 
-interface CallResponse {
+export interface CallResponse {
   name: string
   id: number
   data?: any
@@ -126,7 +126,7 @@ export default abstract class EventEmitter {
   protected waitReady() {
     return new Promise(res => {
       if (this.ready) {
-        return
+        res()
       } else {
         this.watchingReady.push(res)
       }
@@ -176,7 +176,9 @@ export default abstract class EventEmitter {
         },
       }
 
-      this.postMessage(peer, payload)
+      this.waitReady().then(() => {
+        this.postMessage(peer, payload)
+      })
 
       if (timeout != null) {
         timer = setTimeout(() => {
@@ -232,7 +234,7 @@ export default abstract class EventEmitter {
 
   protected checkWorkerAvailable() {
     if (this.destroyed) {
-      throw new Error('itc: cannot send message. current worker was destroyed.')
+      throw new Error('[itc]: current worker was destroyed.')
     }
   }
 
