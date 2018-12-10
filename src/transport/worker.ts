@@ -6,22 +6,35 @@ import EventEmitter from './event-emitter'
 import { hash } from '../utils'
 import { Transport, MesssagePayload, Peer, EVENTS } from './transport'
 
-interface WorkerPayload extends MesssagePayload {
+export interface WorkerPayload extends MesssagePayload {
   target: string | number
   source: Peer
 }
 
-interface InitializeState {
+export interface InitializeState {
   id: number
   peers: Peer[]
   master: Peer
 }
 
-interface PeerInitialState {
+export interface PeerInitialState {
   name: string
 }
 
-type ExtendedPort = MessagePort & { zoombie: boolean; id: number; name: string }
+export type ExtendedPort = MessagePort & { zoombie: boolean; id: number; name: string }
+
+export interface ItcWorker {
+  ports: ExtendedPort[]
+  master: ExtendedPort | undefined
+  scope: SharedWorker.SharedWorkerGlobalScope
+  uid: number
+  checkMaster(): void
+  removePort(port: ExtendedPort): void
+  getPeers(port: ExtendedPort): Peer[]
+  updatePeer(currentPort?: ExtendedPort): void
+  broadcast(data: MesssagePayload, source?: ExtendedPort): void
+  postMessage(data: WorkerPayload, source?: ExtendedPort): void
+}
 
 const WorkerPeer = {
   id: -1,
@@ -187,8 +200,7 @@ export default class WorkerTransport extends EventEmitter implements Transport {
   private genSource() {
     const source = `
     (function(window){
-      var ITCWorker = (${workerSource.toString()})(${JSON.stringify(EVENTS)});
-      new ITCWorker(window);
+      (${workerSource.toString()})(${JSON.stringify(EVENTS)}, window);
     })(this)
     `
 
@@ -208,8 +220,8 @@ export default class WorkerTransport extends EventEmitter implements Transport {
 /**
  * worker 源代码
  */
-export function workerSource(events: typeof EVENTS) {
-  return class {
+export function workerSource(events: typeof EVENTS, scope: SharedWorker.SharedWorkerGlobalScope): ItcWorker {
+  class ItcWorkerImpl implements ItcWorker {
     ports: ExtendedPort[] = []
     master: ExtendedPort | undefined
     scope: SharedWorker.SharedWorkerGlobalScope
@@ -244,20 +256,22 @@ export function workerSource(events: typeof EVENTS) {
     /**
      * sync peers
      */
-    updatePeer() {
-      this.ports.forEach(port => {
-        const peers = this.getPeers(port)
-        port.postMessage({ type: events.UPDATE_PEERS, data: peers })
-      })
+    updatePeer(currentPort?: ExtendedPort) {
+      this.ports
+        .filter(p => p !== currentPort)
+        .forEach(port => {
+          const peers = this.getPeers(port)
+          port.postMessage({ type: events.UPDATE_PEERS, data: peers })
+        })
     }
 
-    broadcast(data: MesssagePayload) {
-      this.ports.forEach(port => port.postMessage(data))
+    broadcast(data: MesssagePayload, source?: ExtendedPort) {
+      this.ports.filter(p => p !== source).forEach(port => port.postMessage(data))
     }
 
-    postMessage(data: WorkerPayload) {
+    postMessage(data: WorkerPayload, source?: ExtendedPort) {
       if (data.target == null || data.target === '*') {
-        this.broadcast(data)
+        this.broadcast(data, source)
         return
       }
 
@@ -319,7 +333,7 @@ export function workerSource(events: typeof EVENTS) {
               break
             case events.MESSAGE:
               // forward to other ports
-              postMessage(message)
+              this.postMessage(message, port)
               break
             case events.DESTORY:
               this.removePort(port)
@@ -327,11 +341,11 @@ export function workerSource(events: typeof EVENTS) {
             case events.INITIAL:
               const { name } = message.data as PeerInitialState
               port.name = name
-              this.updatePeer()
+              this.updatePeer(port)
               break
             default:
               // forward to other ports
-              this.postMessage(message)
+              this.postMessage(message, port)
               break
           }
         })
@@ -352,4 +366,6 @@ export function workerSource(events: typeof EVENTS) {
       })
     }
   }
+
+  return new ItcWorkerImpl(scope)
 }
