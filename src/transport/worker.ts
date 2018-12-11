@@ -41,11 +41,11 @@ const WorkerPeer = {
   name: 'worker',
 }
 
-const MAX_TRY_TIME = 4
+export const MAX_TRY_TIME = 4
 
 export default class WorkerTransport extends EventEmitter implements Transport {
+  id: number = 0
   private tryTimes: number = 0
-  private id: number = 0
   private currentMaster?: Peer
   private peers: Peer[] = []
   private worker?: SharedWorker.SharedWorker
@@ -118,7 +118,6 @@ export default class WorkerTransport extends EventEmitter implements Transport {
     const { filename, lineno, colno, message } = evt as ErrorEvent
     console.warn(`[itc] SharedWorker Error in ${filename}(${lineno}:${colno}): ${message}`)
     if (this.worker) {
-      delete this.worker!.onerror
       this.worker.port.removeEventListener('message', this.onMessage)
       this.worker.removeEventListener('error', this.handleWorkerError)
       this.worker = undefined
@@ -161,7 +160,7 @@ export default class WorkerTransport extends EventEmitter implements Transport {
         this.responseInternal(source, data)
         break
       case EVENTS.CALL_RESPONSE:
-        this.callReturn(source, data.data)
+        this.callReturn(source, data)
         break
       case EVENTS.UPDATE_PEERS:
         this.peers = data
@@ -186,6 +185,7 @@ export default class WorkerTransport extends EventEmitter implements Transport {
 
   protected postMessage(peer: Peer, data: MesssagePayload) {
     if (peer.id === this.id) {
+      console.warn('[itc] cannot postMessage to self')
       return
     }
 
