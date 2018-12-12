@@ -4,11 +4,20 @@ let instance: Transport
 
 export { Transport, Peer, Disposer, Worker, MesssagePayload }
 
-export default function create(name: string, options: {} = {}): Transport {
+const defaultOptions = {
+  useStorage: false,
+}
+
+export default function create(
+  name: string,
+  options: {
+    useStorage?: boolean
+  },
+): Transport {
+  options = { ...defaultOptions, ...(options || {}) }
   if (instance && !instance.destroyed) {
     return instance
   }
 
-  return (instance = new Storage(name) as Transport)
-  // return (instance = new Worker(options.url) as Transport)
+  return (instance = (options.useStorage || !Worker.isSupport ? new Storage(name) : new Worker(name)) as Transport)
 }

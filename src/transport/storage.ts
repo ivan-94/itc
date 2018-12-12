@@ -1,4 +1,6 @@
 /**
+ * 利用storage event 多个同域页面实例之间进行通信
+ *
  * 每个tab开启后会检查当前是有存在master tab. 和SharedWorker一样, master tab作为一个
  * 中间消息中转者, 用于转发和管理peer. 和SharedWorker不一样的是, master tab可能会被销毁,
  * 当slave tab和master tab的心跳中止后会认为master已经销毁. 这时候slave tab会去抢占master tab的
@@ -14,8 +16,6 @@
  * + data: 消息类型, 包含type(事件名), data(事件载荷)
  * + source: 消息源
  *
- * TODO: 兼容性
- * TODO: masterupdate
  */
 import { uuid, delay, getRandomIntInclusive, objEquals } from '../utils'
 
@@ -77,6 +77,7 @@ export default class StorageTransport extends EventEmmiter implements Transport 
     }
 
     window.removeEventListener('storage', this.onStorage)
+    document.removeEventListener('storage', this.onStorage)
     window.removeEventListener('unload', this.destroy)
     if (this.heartBeatTimer) {
       clearTimeout(this.heartBeatTimer)
@@ -123,14 +124,15 @@ export default class StorageTransport extends EventEmmiter implements Transport 
   private async connect() {
     this.currentMaster = undefined
     window.addEventListener('storage', this.onStorage)
+    document.addEventListener('storage', this.onStorage)
     window.addEventListener('unload', this.destroy)
     await this.checkMaster()
     this.heartbeat(true)
     this.emit('ready')
   }
 
-  private onStorage = (evt: StorageEvent) => {
-    const { key, newValue, oldValue } = evt
+  private onStorage = (evt: Event) => {
+    const { key, newValue, oldValue } = evt as StorageEvent
     if (key == null || !key.startsWith(NAMESPACE) || newValue == null) {
       return false
     }

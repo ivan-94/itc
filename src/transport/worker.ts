@@ -44,6 +44,7 @@ const WorkerPeer = {
 export const MAX_TRY_TIME = 4
 
 export default class WorkerTransport extends EventEmitter implements Transport {
+  static isSupport = !!(btoa && SharedWorker)
   id: number = 0
   private tryTimes: number = 0
   private currentMaster?: Peer
