@@ -85,13 +85,14 @@ export default class WorkerTransport extends EventEmitter implements Transport {
     }
 
     window.removeEventListener('unload', this.destroy)
-    this.emit('destroy')
 
     if (this.worker) {
       this.worker.port.removeEventListener('message', this.onMessage)
       this.postMessage(WorkerPeer, { type: EVENTS.DESTORY })
       this.worker = undefined
     }
+
+    this.emit('destroy')
   }
 
   private initializeWorker = () => {
@@ -184,6 +185,10 @@ export default class WorkerTransport extends EventEmitter implements Transport {
   }
 
   protected postMessage(peer: Peer, data: MesssagePayload) {
+    if (this.destroyed) {
+      return
+    }
+
     if (peer.id === this.id) {
       console.warn('[itc] cannot postMessage to self')
       return

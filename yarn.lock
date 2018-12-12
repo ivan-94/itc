@@ -20,6 +20,10 @@
   version "23.3.10"
   resolved "https://registry.npmjs.org/@types/jest/-/jest-23.3.10.tgz#4897974cc317bf99d4fe6af1efa15957fa9c94de"
 
+"@types/node@^10.12.12":
+  version "10.12.12"
+  resolved "https://registry.npmjs.org/@types/node/-/node-10.12.12.tgz#e15a9d034d9210f00320ef718a50c4a799417c47"
+
 "@types/sharedworker@^0.0.28":
   version "0.0.28"
   resolved "https://registry.yarnpkg.com/@types/sharedworker/-/sharedworker-0.0.28.tgz#8690549388cdb67ec76c31aafa99caafcb06530c"

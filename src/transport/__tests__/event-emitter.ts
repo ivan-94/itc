@@ -194,16 +194,13 @@ describe('test call', () => {
     jest.useRealTimers()
   })
 
-  it('should timeout when not ready', () => {
-    jest.useFakeTimers()
-    const catcher = jest.fn()
-    const promise = instance.call(peer1, 'foo').catch(catcher)
-    jest.advanceTimersByTime(3100)
-    return promise.then(() => {
-      expect(instance.mockTransport).not.toBeCalled()
-      expect(catcher).toBeCalled()
-      expect(catcher.mock.calls[0]).toMatchObject([{ message: 'timeout' }])
-    })
+  it('should pending when not ready', async () => {
+    const promise = instance.call(peer1, 'foo')
+    await Promise.resolve()
+    expect(instance.mockTransport).not.toBeCalled()
+    instance.emit('ready')
+    await Promise.resolve()
+    expect(instance.mockTransport).toBeCalled()
   })
 
   it('should timeout when peer not response', async () => {
@@ -213,13 +210,12 @@ describe('test call', () => {
     jest.useFakeTimers()
     const catcher = jest.fn()
     const promise = instance.call(peer1, 'foo').catch(catcher)
+    await Promise.resolve()
     jest.advanceTimersByTime(3000)
-
-    return promise.then(() => {
-      expect(instance.mockTransport).toBeCalled()
-      expect(catcher).toBeCalled()
-      expect(catcher.mock.calls[0]).toMatchObject([{ message: 'timeout' }])
-    })
+    await Promise.resolve()
+    expect(instance.mockTransport).toBeCalled()
+    expect(catcher).toBeCalled()
+    expect(catcher.mock.calls[0]).toMatchObject([{ message: 'timeout' }])
   })
 
   describe('should call postMessage', () => {

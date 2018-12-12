@@ -107,7 +107,9 @@ export default abstract class EventEmitter {
    */
   call(peer: Peer, name: string, ...args: any[]): Promise<any> {
     this.checkWorkerAvailable()
-    return this.callInternal(peer, name, args, this.defaultTimeout)
+    return this.waitReady().then(() => {
+      return this.callInternal(peer, name, args, this.defaultTimeout)
+    })
   }
 
   /**
@@ -176,12 +178,10 @@ export default abstract class EventEmitter {
         },
       }
 
-      this.waitReady().then(() => {
-        this.postMessage(peer, payload)
-      })
+      this.postMessage(peer, payload)
 
       if (timeout != null) {
-        timer = setTimeout(() => {
+        timer = window.setTimeout(() => {
           rejecter(new Error('timeout'))
         }, timeout)
       }

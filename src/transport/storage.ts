@@ -15,36 +15,37 @@
  * + source: 消息源
  *
  * TODO: 兼容性
+ * TODO: masterupdate
  */
 import { uuid, delay, getRandomIntInclusive, objEquals } from '../utils'
 
 import { Transport, Peer, MesssagePayload, BroadcastPeer, EVENTS, INNER_CALL, ERRORS } from './transport'
 import EventEmmiter from './event-emitter'
 
-interface PeerInfo extends Peer {
+export interface PeerInfo extends Peer {
   /**
    * 最后更新时间, 用于检测是否离线
    */
   lastUpdate: number
 }
 
-interface StoragePayload {
+export interface StoragePayload<T = any> {
   target: string
   source: Peer
-  data: MesssagePayload
+  data: MesssagePayload<T>
 }
 
-const NAMESPACE = '_ITC_'
-const HEART_BEAT = 2500
-const MASTER_HEART_BEAT = 1000
-const ZOOMBIE_THRESHOLD = 4000
+export const NAMESPACE = '_ITC_'
+export const HEART_BEAT = 2500
+export const MASTER_HEART_BEAT = 1000
+export const ZOOMBIE_THRESHOLD = 4000
 /**
  * NAMESPACE.type.desc
  */
 const EVENT_REGEXP = new RegExp(`^${NAMESPACE}\\.([^\\.]*)$`)
 
 export default class StorageTransport extends EventEmmiter implements Transport {
-  private id = uuid()
+  id = uuid()
   private masterHeartBeatTimer?: number
   private heartBeatTimer?: number
   private peers: PeerInfo[] = []
@@ -56,8 +57,11 @@ export default class StorageTransport extends EventEmmiter implements Transport 
     return { id: this.id, name: this.name }
   }
 
-  constructor(name: string) {
+  constructor(name: string, storage?: Storage) {
     super(name)
+    if (storage) {
+      this.storage = storage
+    }
     console.log('current', this.id)
     this.initializeInnerHandler()
     this.connect()
@@ -95,6 +99,7 @@ export default class StorageTransport extends EventEmmiter implements Transport 
   }
 
   isMaster() {
+    this.checkWorkerAvailable()
     return this.getMaster().then(master => {
       return !!master && master.id === this.id
     })
@@ -127,12 +132,12 @@ export default class StorageTransport extends EventEmmiter implements Transport 
   private onStorage = (evt: StorageEvent) => {
     const { key, newValue, oldValue } = evt
     if (key == null || !key.startsWith(NAMESPACE) || newValue == null) {
-      return
+      return false
     }
 
     const matched = key.match(EVENT_REGEXP)
     if (matched == null) {
-      return
+      return false
     }
 
     const value = JSON.parse(newValue)
@@ -144,26 +149,27 @@ export default class StorageTransport extends EventEmmiter implements Transport 
         this.updateMaster(value as Peer)
         break
       case 'message':
-        this.handleMessage(value as StoragePayload)
+        return this.handleMessage(value as StoragePayload)
         break
       default:
         console.warn(`[itc] unknown event: ${EVENT}`)
-        break
+        return false
     }
+
+    return true
   }
 
   private handleMessage(message: StoragePayload) {
     const { target, source, data } = message
     if (target !== this.id && target !== '*') {
-      return
+      return false
     }
 
     if (source.id === this.id) {
-      return
+      return false
     }
 
     console.log(message)
-    // TODO: handleMessage
     switch (data.type) {
       case EVENTS.PING:
         this.postMessage(source, { type: EVENTS.PONG })
@@ -182,10 +188,12 @@ export default class StorageTransport extends EventEmmiter implements Transport 
         break
       case EVENTS.MESSAGE:
         this.emit('message', data.data)
+        break
       default:
         console.warn(`[itc] unknown message event: ${data.type}`)
-        break
+        return false
     }
+    return true
   }
 
   /**
@@ -219,7 +227,7 @@ export default class StorageTransport extends EventEmmiter implements Transport 
       this.masterHeartBeat()
     }
 
-    if (this.currentMaster == null || this.currentMaster.id !== peer.id) {
+    if (prevMaster == null || prevMaster.id !== peer.id) {
       if (peer.id === this.id) {
         this.emit('master')
       }
@@ -249,14 +257,16 @@ export default class StorageTransport extends EventEmmiter implements Transport 
       if (master.id === this.id) {
         this.currentMaster = master
         this.emit('master')
+        this.emit('masterupdate', master)
         return
       }
 
       try {
         // 检查是否存活
-        await this.callInternal(master, INNER_CALL.CHECK_ALIVE, [], 1000)
+        await this.callInternal(master, INNER_CALL.CHECK_ALIVE, [], 500)
         console.log('master existed', master.id, this.id)
         this.currentMaster = master
+        this.emit('masterupdate', master)
       } catch (err) {
         console.log('master no alive', master.id, this.id)
         // timeout, 未存活, 抢占
@@ -283,6 +293,7 @@ export default class StorageTransport extends EventEmmiter implements Transport 
             if (master.id === this.id) {
               this.emit('master')
             }
+            this.emit('masterupdate', master)
           }
 
           // 其他tabs已经抢占
@@ -304,43 +315,53 @@ export default class StorageTransport extends EventEmmiter implements Transport 
       return
     }
 
-    this.masterHeartBeatTimer = window.setTimeout(async () => {
-      // 使用随机的重试次数，避免抢占冲突的概率
-      const retryTimes = getRandomIntInclusive(2, 4)
-      let currentMaster: Peer | undefined
+    this.masterHeartBeatTimer = window.setTimeout(this.checkMasterAlive, MASTER_HEART_BEAT)
+  }
 
-      for (let i = 0; i < retryTimes; i++) {
-        try {
-          currentMaster = this.currentMaster
-          await this.callInternal(this.currentMaster!, INNER_CALL.CHECK_ALIVE, [], 1000)
-          this.masterHeartBeat()
-          break
-        } catch (err) {
-          if (i === retryTimes - 1) {
-            // 到这一步, 可能别的tab已经开启抢占和更改master了
-            // try -- |master change| -- catch
-            if (currentMaster && currentMaster !== this.currentMaster) {
-              this.masterHeartBeat()
-            } else {
-              // master dead
-              this.currentMaster = undefined
-              this.checkMaster(true)
-            }
-            break
+  private checkMasterAlive = async () => {
+    if (this.destroyed) {
+      return
+    }
+
+    // 使用随机的重试次数，避免抢占冲突的概率
+    const retryTimes = getRandomIntInclusive(2, 4)
+    let currentMaster: Peer | undefined
+
+    for (let i = 0; i < retryTimes; i++) {
+      try {
+        currentMaster = this.currentMaster
+        await this.callInternal(this.currentMaster!, INNER_CALL.CHECK_ALIVE, [], 1000)
+        this.masterHeartBeat()
+        break
+      } catch (err) {
+        if (i === retryTimes - 1) {
+          // 到这一步, 可能别的tab已经开启抢占和更改master了
+          // try -- |master change| -- catch
+          if (currentMaster && currentMaster !== this.currentMaster) {
+            this.masterHeartBeat()
+          } else {
+            // master dead
+            this.currentMaster = undefined
+            this.checkMaster(true)
           }
-
-          await delay()
+          break
         }
+
+        await delay()
       }
-    }, MASTER_HEART_BEAT)
+    }
   }
 
   /**
    * 定期ping收集存活的peer
    */
   private heartbeat(immediate?: boolean) {
-    this.heartBeatTimer = setTimeout(
+    this.heartBeatTimer = window.setTimeout(
       () => {
+        if (this.destroyed) {
+          return
+        }
+
         this.postMessage(BroadcastPeer, { type: EVENTS.PING })
         this.updatePeers()
         this.heartbeat()
@@ -403,6 +424,10 @@ export default class StorageTransport extends EventEmmiter implements Transport 
   }
 
   protected postMessage(peer: Peer, data: MesssagePayload) {
+    if (this.destroyed) {
+      return
+    }
+
     if (peer.id === this.id) {
       return
     }
