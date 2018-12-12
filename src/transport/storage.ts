@@ -175,8 +175,7 @@ export default class StorageTransport extends EventEmmiter implements Transport 
         this.postMessage(source, { type: EVENTS.PONG })
         break
       case EVENTS.PONG:
-        this.updatePeer(source)
-        break
+        return this.updatePeer(source)
       case EVENTS.DESTORY:
         this.removePeer(source)
         break
@@ -373,7 +372,7 @@ export default class StorageTransport extends EventEmmiter implements Transport 
 
   private updatePeer(peer: Peer) {
     if (peer.id === this.id) {
-      return
+      return false
     }
 
     let dirty = false
@@ -391,6 +390,8 @@ export default class StorageTransport extends EventEmmiter implements Transport 
     if (dirty) {
       this.emitPeerUpdate()
     }
+
+    return dirty
   }
 
   private removePeer(peer: Peer) {
@@ -440,6 +441,7 @@ export default class StorageTransport extends EventEmmiter implements Transport 
     }
 
     if (peer.id === this.id) {
+      console.warn('cannot postMessage to self', data)
       return
     }
 

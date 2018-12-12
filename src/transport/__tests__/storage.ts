@@ -385,10 +385,170 @@ describe('storage transport', () => {
       expect(peerupdateHandle).toHaveBeenLastCalledWith([])
     })
 
-    it.skip('peer join', () => {})
-    it.skip('peer destroy', () => {})
+    it('peer join', async () => {
+      const t = transport
+      t.on('peerupdate', peerupdateHandle)
+      // some source, will ignore
+      expect(mockStorageMessage(peer1, peer1, EVENTS.PONG, undefined)).toBeFalsy()
+      expect(mockStorageMessage(peer1, peer2, EVENTS.PONG, undefined)).toBeTruthy()
+      // @ts-ignore
+      expect(t.peers).toMatchObject([peer2])
+      expect(peerupdateHandle).toBeCalled()
+
+      expect(mockStorageMessage(peer1, peer3, EVENTS.PONG, undefined)).toBeTruthy()
+      // @ts-ignore
+      expect(t.peers).toMatchObject([peer2, peer3])
+      expect(peerupdateHandle).toBeCalledTimes(2)
+    })
+
+    it('peer destroy', () => {
+      const t = transport
+      t.on('peerupdate', peerupdateHandle)
+      // @ts-ignore
+      t.peers = [peer2, peer3]
+      // @ts-ignore
+      const getPeers = () => t.peers
+
+      mockStorageMessage(peer1, { id: 10, name: 'unknown' }, EVENTS.DESTORY, undefined)
+      expect(peerupdateHandle).not.toBeCalled()
+      expect(getPeers()).toMatchObject([peer2, peer3])
+
+      mockStorageMessage(peer1, peer2, EVENTS.DESTORY, undefined)
+      expect(peerupdateHandle).toBeCalled()
+      expect(getPeers()).toMatchObject([peer3])
+    })
   })
 
-  describe.skip('call', () => {})
-  describe.skip('message', () => {})
+  describe('call & message', () => {
+    beforeEach(() => {
+      transport.ready = true
+    })
+
+    it('call send', async () => {
+      // call self, will be ignore
+      // @ts-ignore
+      const call = (...args: any[]) => transport.callInternal(...args)
+      call(peer1, 'name', [], 3000)
+      await delay()
+      expect(getLastMessage()).not.toMatchObject({ value: { data: { type: EVENTS.CALL } } })
+      call(peer2, 'name', [1, '2', true, [], {}])
+      await delay()
+      expect(getLastMessage()).toMatchObject({
+        value: {
+          data: {
+            type: EVENTS.CALL,
+            data: {
+              name: 'name',
+              args: [1, '2', true, [], {}],
+            },
+          },
+        },
+      })
+
+      transport.response('foo', async (peer: Peer, count: number) => {
+        expect(count).toBe(5)
+        expect(peer).toMatchObject(peer2)
+        return count + 1
+      })
+
+      mockStorageMessage(peer1, peer2, EVENTS.CALL, { id: 5, name: 'foo', args: [5] })
+      await delay()
+      expect(getLastMessage()).toMatchObject({
+        value: {
+          data: { type: EVENTS.CALL_RESPONSE, data: { id: 5, name: 'foo', data: 6 } },
+        },
+      })
+
+      // response error
+      transport.response('bar', async () => {
+        throw new Error('testError')
+      })
+      mockStorageMessage(peer1, peer2, EVENTS.CALL, {
+        id: 5,
+        name: 'bar',
+        args: [5],
+      })
+      await delay()
+      expect(getLastMessage()).toMatchObject({
+        value: {
+          data: {
+            type: EVENTS.CALL_RESPONSE,
+            data: {
+              id: 5,
+              name: 'bar',
+              error: 'testError',
+            },
+          },
+        },
+      })
+    })
+
+    it('call reponse', async () => {
+      const res = jest.fn()
+      const rej = jest.fn()
+      // @ts-ignore
+      const call = (...args: any[]) => transport.callInternal(...args)
+      call(peer2, 'foo', [1, '2', true], 1000).then(res)
+      await delay()
+      let data = getLastMessage().value.data.data as CallPayload
+      const returnData = { a: 1, b: '2', c: {}, d: [] }
+      mockStorageMessage(peer1, peer2, EVENTS.CALL_RESPONSE, {
+        name: 'foo',
+        id: data.id,
+        data: returnData,
+      })
+      await delay()
+      expect(res).toBeCalledWith(returnData)
+
+      // test reject
+      call(peer2, 'bar', [1, '2', true], 1000).catch(rej)
+      await delay()
+      data = getLastMessage().value.data.data as CallPayload
+      const returnError = 'testError'
+      mockStorageMessage(peer1, peer2, EVENTS.CALL_RESPONSE, {
+        name: 'bar',
+        id: data.id,
+        error: returnError,
+      })
+      await delay()
+      expect(rej.mock.calls[0]).toMatchObject([{ message: returnError }])
+    })
+
+    it('message send', () => {
+      // same source
+      transport.send(1, peer1)
+      expect(getLastMessage()).not.toMatchObject({ value: { data: { type: EVENTS.MESSAGE } } })
+
+      // broadcast
+      transport.send(2)
+      expect(getLastMessage()).toMatchObject({
+        value: { data: { type: EVENTS.MESSAGE, data: 2 }, target: '*', source: peer1 },
+      })
+      ;[1, '2', true, { a: 1 }, []].forEach(d => {
+        transport.send(d, peer2)
+        expect(getLastMessage()).toMatchObject({
+          value: {
+            data: {
+              type: EVENTS.MESSAGE,
+              data: d,
+            },
+            source: peer1,
+          },
+        })
+      })
+    })
+
+    it('message receive', () => {
+      const messageHandler = jest.fn()
+      transport.on('message', messageHandler)
+
+      // same source
+      mockStorageMessage(peer1, peer1, EVENTS.MESSAGE, 1)
+      expect(messageHandler).not.toBeCalled()
+      ;[1, '2', true, { a: 1 }, []].forEach(d => {
+        mockStorageMessage(peer1, peer2, EVENTS.MESSAGE, d)
+        expect(messageHandler).toBeCalledWith(d)
+      })
+    })
+  })
 })

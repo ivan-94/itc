@@ -203,12 +203,7 @@ export default class WorkerTransport extends EventEmitter implements Transport {
   }
 
   private genSource() {
-    const source = `
-    (function(window){
-      (${workerSource.toString()})(${JSON.stringify(EVENTS)}, window);
-    })(this)
-    `
-
+    const source = this.getSource()
     const sourceHash = hash(source)
     const key = `itc-sw-${sourceHash}`
     let cachedUrl = window.localStorage.getItem(key)
@@ -219,6 +214,14 @@ export default class WorkerTransport extends EventEmitter implements Transport {
       window.localStorage.setItem(key, cachedUrl)
       return cachedUrl
     }
+  }
+
+  private getSource() {
+    return `
+    (function(window){
+      (${workerSource.toString()})(${JSON.stringify(EVENTS)}, window);
+    })(this)
+    `
   }
 }
 
