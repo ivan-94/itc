@@ -211,6 +211,7 @@ export default class StorageTransport extends EventEmmiter implements Transport 
   }
 
   private updateMaster(peer: Peer) {
+    // 正常环境应该不可能出现这种情况，因为只能接受到其他tab的事件
     if (peer.id === this.id) {
       return
     }
@@ -388,7 +389,7 @@ export default class StorageTransport extends EventEmmiter implements Transport 
     }
 
     if (dirty) {
-      this.emit('peerupdate', this.peers)
+      this.emitPeerUpdate()
     }
   }
 
@@ -396,7 +397,7 @@ export default class StorageTransport extends EventEmmiter implements Transport 
     const idx = this.peers.findIndex(p => p.id === peer.id)
     if (idx !== -1) {
       this.peers.splice(idx, 1)
-      this.emit('peerupdate', this.peers)
+      this.emitPeerUpdate()
     }
   }
 
@@ -419,8 +420,18 @@ export default class StorageTransport extends EventEmmiter implements Transport 
     })
 
     if (peerToRemoves.length) {
-      this.emit('peerupdate', this.peers)
+      this.emitPeerUpdate()
     }
+  }
+
+  private emitPeerUpdate() {
+    this.emit(
+      'peerupdate',
+      this.peers.map(({ id, name }) => ({
+        id,
+        name,
+      })),
+    )
   }
 
   protected postMessage(peer: Peer, data: MesssagePayload) {

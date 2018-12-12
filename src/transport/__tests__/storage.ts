@@ -1,5 +1,5 @@
 import * as utils from '../../utils'
-import StorageTransport, { StoragePayload } from '../storage'
+import StorageTransport, { StoragePayload, PeerInfo } from '../storage'
 import { EVENTS, Peer, INNER_CALL } from '../transport'
 import { CallResponse, CallPayload } from '../event-emitter'
 import { delay } from './helper'
@@ -29,6 +29,8 @@ describe('storage transport', () => {
   let masterHandle = jest.fn()
   let destroyHandle = jest.fn()
   let masterupdateHandle = jest.fn()
+  let masterloseHandle = jest.fn()
+  let peerupdateHandle = jest.fn()
   let postedMessage: Array<{ key: string; value: any }> = []
   // @ts-ignore
   const mockStorage = {
@@ -95,6 +97,8 @@ describe('storage transport', () => {
     masterHandle.mockClear()
     destroyHandle.mockClear()
     masterupdateHandle.mockClear()
+    masterloseHandle.mockClear()
+    peerupdateHandle.mockClear()
     postedMessage = []
     window.localStorage.clear()
     transport = new StorageTransport(peer1.name, mockStorage)
@@ -311,14 +315,80 @@ describe('storage transport', () => {
       callInternal.mockImplementation(() => Promise.reject(new Error('timeout')))
       jest.advanceTimersByTime(1000)
       await delay()
-      expect(callInternal).toBeCalled()
+      // retry 2 times
+      expect(callInternal).toBeCalledTimes(2)
+      expect(callInternal).toBeCalledWith(peer2, INNER_CALL.CHECK_ALIVE, [], 1000)
+
+      // re-preempt
+      t.on('master', masterHandle)
+      await delay()
+      expect(getLastMessage()).toMatchObject({ key: '_ITC_.master', value: { id: transport.id } })
+      jest.advanceTimersByTime(100)
+      await delay()
+      // become master
+      expect(await t.isMaster()).toBeTruthy()
+      expect(masterHandle).toBeCalled()
     })
 
-    it('master lose', () => {})
+    it('master lose & and become master', async () => {
+      const t = transport
+      await delay()
+      jest.advanceTimersByTime(100)
+      expect(await t.isMaster()).toBeTruthy()
+
+      // @ts-ignore
+      const masterHB = jest.spyOn(t, 'masterHeartBeat')
+      t.on('masterlose', masterloseHandle)
+      t.on('masterupdate', masterupdateHandle)
+
+      // master update
+      mockStorageEvent('master', peer2)
+      expect(masterloseHandle).toBeCalled()
+      expect(masterupdateHandle).toBeCalled()
+      expect(masterHB).toBeCalled()
+    })
   })
 
-  describe.skip('heartbeat', () => {})
-  describe.skip('peer update', () => {})
+  describe('peer update', () => {
+    it('updatePeers', () => {
+      const t = transport
+      t.on('peerupdate', peerupdateHandle)
+      const now = 1544611676008
+      const mockPeers: PeerInfo[] = [
+        {
+          ...peer2,
+          lastUpdate: now,
+        },
+        {
+          ...peer3,
+          lastUpdate: now + 2000,
+        },
+      ]
+      // @ts-ignore
+      t.peers = mockPeers
+      const mockNow = jest.spyOn(Date, 'now')
+      mockNow.mockReturnValue(now + 2000)
+      // @ts-ignore
+      t.updatePeers()
+      expect(peerupdateHandle).not.toBeCalled()
+
+      // advance
+      mockNow.mockReturnValue(now + 4001)
+      // @ts-ignore
+      t.updatePeers()
+      expect(peerupdateHandle).toBeCalledWith([peer3])
+
+      // advance
+      mockNow.mockReturnValue(now + 6001)
+      // @ts-ignore
+      t.updatePeers()
+      expect(peerupdateHandle).toHaveBeenLastCalledWith([])
+    })
+
+    it.skip('peer join', () => {})
+    it.skip('peer destroy', () => {})
+  })
+
   describe.skip('call', () => {})
   describe.skip('message', () => {})
 })
