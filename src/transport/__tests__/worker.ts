@@ -2,6 +2,8 @@ import WorkerTransport, { workerSource, ItcWorker, MAX_TRY_TIME } from '../worke
 import { EVENTS, Peer } from '../transport'
 import { CallPayload } from '../event-emitter'
 
+import { delay } from './helper'
+
 declare global {
   namespace NodeJS {
     interface Global {
@@ -389,7 +391,7 @@ describe('test worker peer', () => {
 
       // immediately fire
       transport.on('master', masterHandler2)
-      await Promise.resolve()
+      await delay()
       expect(masterHandler2).toBeCalled()
 
       // master update
@@ -481,7 +483,7 @@ describe('test worker peer', () => {
         },
         source: peer2,
       })
-      await Promise.resolve()
+      await delay()
       expect(worker.port.lastMessage()).toMatchObject({
         type: EVENTS.CALL_RESPONSE,
         target: peer2.id,
@@ -499,7 +501,7 @@ describe('test worker peer', () => {
       const res = jest.fn()
       const rej = jest.fn()
       transport.call(peer2, 'foo', 1, '2', true).then(res)
-      await Promise.resolve()
+      await delay()
       let data = worker.port.lastMessage().data as CallPayload
       const returnData = { a: 1, b: '2', c: {}, d: [] }
       worker.port.mockResponse({
@@ -512,7 +514,7 @@ describe('test worker peer', () => {
           data: returnData,
         },
       })
-      await Promise.resolve()
+      await delay()
       expect(res).toBeCalledWith(returnData)
 
       // test reject
@@ -530,7 +532,7 @@ describe('test worker peer', () => {
           error: returnError,
         },
       })
-      await Promise.resolve()
+      await delay()
       expect(rej.mock.calls[0]).toMatchObject([{ message: returnError }])
     })
 

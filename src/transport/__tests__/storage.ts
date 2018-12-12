@@ -1,7 +1,8 @@
-import StorageTransport, { StoragePayload } from '../storage'
 import * as utils from '../../utils'
+import StorageTransport, { StoragePayload } from '../storage'
 import { EVENTS, Peer, INNER_CALL } from '../transport'
 import { CallResponse, CallPayload } from '../event-emitter'
+import { delay } from './helper'
 
 jest.mock('../../utils')
 
@@ -11,17 +12,6 @@ const mockRemoveListener = jest.spyOn(window, 'removeEventListener')
 const peer1 = { id: '1', name: 'peer1' }
 const peer2 = { id: '2', name: 'peer2' }
 const peer3 = { id: '3', name: 'peer3' }
-
-// flush all promise
-function delay() {
-  return new Promise(res => {
-    jest.useRealTimers()
-    setTimeout(() => {
-      jest.useFakeTimers()
-      res()
-    })
-  })
-}
 
 beforeAll(() => {
   jest.useFakeTimers()

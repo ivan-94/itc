@@ -1,5 +1,6 @@
 import EventEmitter, { CallPayload, CallResponse } from '../event-emitter'
 import { Peer, MesssagePayload, EVENTS, ERRORS } from '../transport'
+import { delay } from './helper'
 
 const peer1 = { id: 1, name: 'peer1' }
 const peer2 = { id: 2, name: 'peer2' }
@@ -188,13 +189,12 @@ describe('test call', () => {
     }
   }
 
-  let instance: TestCall
   beforeEach(() => {
-    instance = new TestCall('name')
     jest.useRealTimers()
   })
 
   it('should pending when not ready', async () => {
+    const instance = new TestCall('name')
     const promise = instance.call(peer1, 'foo')
     await Promise.resolve()
     expect(instance.mockTransport).not.toBeCalled()
@@ -204,31 +204,30 @@ describe('test call', () => {
   })
 
   it('should timeout when peer not response', async () => {
+    const instance = new TestCall('name')
     instance.emit('ready')
     expect(instance.ready).toBeTruthy()
 
     jest.useFakeTimers()
     const catcher = jest.fn()
     const promise = instance.call(peer1, 'foo').catch(catcher)
-    await Promise.resolve()
+    await delay()
     jest.advanceTimersByTime(3000)
-    await Promise.resolve()
+    await delay()
     expect(instance.mockTransport).toBeCalled()
     expect(catcher).toBeCalled()
     expect(catcher.mock.calls[0]).toMatchObject([{ message: 'timeout' }])
   })
 
   describe('should call postMessage', () => {
-    beforeEach(() => {
-      instance.emit('ready')
-    })
-
     it.each`
       peer     | name       | args
       ${peer1} | ${'one'}   | ${[1, 2, 3]}
       ${peer2} | ${'two'}   | ${['one', 'two']}
       ${peer3} | ${'three'} | ${[{}]}
     `('call($peer, $name, ...$args)', async ({ peer, name, args }) => {
+      const instance = new TestCall('name')
+      instance.emit('ready')
       instance.call(peer, name, ...args)
       await Promise.resolve()
       const [callPeer, payload] = instance.mockTransport.mock.calls[0]
@@ -238,16 +237,14 @@ describe('test call', () => {
   })
 
   describe('callReturn from peer', () => {
-    beforeEach(() => {
-      instance.emit('ready')
-    })
-
     it.each`
       peer     | name       | data              | error
       ${peer1} | ${'one'}   | ${1}              | ${undefined}
       ${peer2} | ${'two'}   | ${{ a: 1, b: 2 }} | ${undefined}
       ${peer3} | ${'three'} | ${undefined}      | ${'customError'}
     `('callReturn($peer, {error: $error, data: $data})', async ({ peer, name, data, error }) => {
+      const instance = new TestCall('name')
+      instance.emit('ready')
       const res = jest.fn()
       const rej = jest.fn()
       const promise = instance.call(peer, name, []).then(res, rej)
@@ -275,6 +272,7 @@ describe('test call', () => {
 
   describe('test response', () => {
     it('should response data', async () => {
+      const instance = new TestCall('name')
       const data = ['TEST']
       const h = jest.fn(() => Promise.resolve(data))
       instance.response('foo', h)
@@ -288,12 +286,14 @@ describe('test call', () => {
     })
 
     it('should response error', async () => {
+      const instance = new TestCall('name')
+      jest.useFakeTimers()
       const error = 'TEST'
       const h = jest.fn(() => Promise.reject(new Error(error)))
       instance.response('foo', h)
       instance.mockReponse(peer1, { id: 1, name: 'foo', args: [1, 2] })
       expect(h).toBeCalledWith(peer1, 1, 2)
-      await Promise.resolve()
+      await delay()
       expect(instance.mockTransport).toBeCalledWith(peer1, {
         type: EVENTS.CALL_RESPONSE,
         data: { id: 1, name: 'foo', data: undefined, error },
@@ -301,6 +301,7 @@ describe('test call', () => {
     })
 
     it('should response not found error when not handler found', () => {
+      const instance = new TestCall('name')
       instance.mockReponse(peer1, { id: 1, name: 'foo', args: [1, 2] })
       expect(instance.mockTransport).toBeCalledWith(peer1, {
         type: EVENTS.CALL_RESPONSE,
