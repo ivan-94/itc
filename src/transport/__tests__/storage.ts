@@ -285,7 +285,7 @@ describe('storage transport', () => {
       const callResponse: CallResponse = {
         name: INNER_CALL.CHECK_ALIVE,
         id: lastMessage.data.data!.id,
-        data: true,
+        data: {},
       }
 
       // mock reponse CHECK_ALIVE
@@ -317,7 +317,7 @@ describe('storage transport', () => {
       await delay()
       // retry 2 times
       expect(callInternal).toBeCalledTimes(2)
-      expect(callInternal).toBeCalledWith(peer2, INNER_CALL.CHECK_ALIVE, [], 1000)
+      expect(callInternal).toBeCalledWith(peer2, INNER_CALL.CHECK_ALIVE, [], 200)
 
       // re-preempt
       t.on('master', masterHandle)
@@ -346,6 +346,30 @@ describe('storage transport', () => {
       expect(masterloseHandle).toBeCalled()
       expect(masterupdateHandle).toBeCalled()
       expect(masterHB).toBeCalled()
+    })
+
+    it('master auto correct', async () => {
+      const t = transport
+      await delay()
+      mockStorageEvent('master', peer2)
+      expect(await t.getMaster()).toEqual(peer2)
+
+      // mock incorrect CHECK_ALIVE
+      mockStorageMessage(peer1, peer2, EVENTS.CALL, { name: INNER_CALL.CHECK_ALIVE })
+      await delay()
+      expect(getLastMessage()).toMatchObject({
+        value: {
+          data: {
+            type: EVENTS.CALL_RESPONSE,
+            data: {
+              name: INNER_CALL.CHECK_ALIVE,
+              data: {
+                status: 'correction',
+              },
+            },
+          },
+        },
+      })
     })
   })
 

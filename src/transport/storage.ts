@@ -268,7 +268,7 @@ export default class StorageTransport extends EventEmmiter implements Transport 
 
       try {
         // 检查是否存活
-        const res: CheckAliveResponse = await this.callInternal(master, INNER_CALL.CHECK_ALIVE, [], 500)
+        const res: CheckAliveResponse = await this.callInternal(master, INNER_CALL.CHECK_ALIVE, [], 200)
         if (res.status === 'correction') {
           this.updateMaster(this.getItem('master'))
           return
@@ -342,7 +342,7 @@ export default class StorageTransport extends EventEmmiter implements Transport 
     for (let i = 0; i < retryTimes; i++) {
       try {
         currentMaster = this.currentMaster
-        const res: CheckAliveResponse = await this.callInternal(this.currentMaster!, INNER_CALL.CHECK_ALIVE, [], 1000)
+        const res: CheckAliveResponse = await this.callInternal(this.currentMaster!, INNER_CALL.CHECK_ALIVE, [], 200)
         if (res.status === 'correction') {
           this.updateMaster(this.getItem('master'))
         }
