@@ -35,6 +35,8 @@ export interface StoragePayload<T = any> {
   data: MesssagePayload<T>
 }
 
+export type CheckAliveResponse = { status: 'ok' | 'correction' }
+
 export const NAMESPACE = '_ITC_'
 export const HEART_BEAT = 2500
 export const MASTER_HEART_BEAT = 1000
@@ -62,7 +64,7 @@ export default class StorageTransport extends EventEmmiter implements Transport 
     if (storage) {
       this.storage = storage
     }
-    console.log('current', this.id)
+    console.log('current', this.id, this.name)
     this.initializeInnerHandler()
     this.connect()
   }
@@ -113,9 +115,16 @@ export default class StorageTransport extends EventEmmiter implements Transport 
 
   private initializeInnerHandler() {
     // 响应master存活检查，如果当前不是master则忽略
-    this.response(INNER_CALL.CHECK_ALIVE, () => {
-      if (this.currentMaster && this.currentMaster.id === this.id) {
-        return Promise.resolve()
+    this.response(INNER_CALL.CHECK_ALIVE, (peer: Peer) => {
+      if (this.currentMaster) {
+        // 确定是master
+        if (this.currentMaster.id === this.id) {
+          return Promise.resolve({ status: 'ok' })
+        } else {
+          console.log('master correct', `from(${peer.name}) -> ${this.name}: ${this.currentMaster.name}`)
+          // 纠错
+          return Promise.resolve({ status: 'correction' })
+        }
       }
       return Promise.reject(ERRORS.IGNORED)
     })
@@ -147,7 +156,7 @@ export default class StorageTransport extends EventEmmiter implements Transport 
 
     switch (EVENT) {
       case 'master':
-        console.log('master', value)
+        console.log('master', value, this.name)
         this.updateMaster(value as Peer)
         break
       case 'message':
@@ -171,7 +180,6 @@ export default class StorageTransport extends EventEmmiter implements Transport 
       return false
     }
 
-    console.log(message)
     switch (data.type) {
       case EVENTS.PING:
         this.postMessage(source, { type: EVENTS.PONG })
@@ -212,11 +220,6 @@ export default class StorageTransport extends EventEmmiter implements Transport 
   }
 
   private updateMaster(peer: Peer) {
-    // 正常环境应该不可能出现这种情况，因为只能接受到其他tab的事件
-    if (peer.id === this.id) {
-      return
-    }
-
     const prevMaster = this.currentMaster
     this.currentMaster = peer
 
@@ -224,7 +227,7 @@ export default class StorageTransport extends EventEmmiter implements Transport 
     // 如果当前页面卡死，或者被断点阻塞，那么将无法响应其他tab，这时候其他Tab会重新尝试
     // 抢占master，从而产生新的master。这时候旧的master恢复了需要放弃master身份
     if (prevMaster && prevMaster.id === this.id && prevMaster.id !== this.currentMaster.id) {
-      console.log('master lose')
+      console.log('master lose', this.name)
       this.emit('masterlose')
       this.masterHeartBeat()
     }
@@ -265,17 +268,24 @@ export default class StorageTransport extends EventEmmiter implements Transport 
 
       try {
         // 检查是否存活
-        await this.callInternal(master, INNER_CALL.CHECK_ALIVE, [], 500)
-        console.log('master existed', master.id, this.id)
+        const res: CheckAliveResponse = await this.callInternal(master, INNER_CALL.CHECK_ALIVE, [], 500)
+        if (res.status === 'correction') {
+          this.updateMaster(this.getItem('master'))
+          return
+        }
+
+        console.log('master existed', master.id, this.id, this.name)
         this.currentMaster = master
         this.emit('masterupdate', master)
       } catch (err) {
-        console.log('master no alive', master.id, this.id)
+        console.log('master no alive', master.id, this.id, this.name)
         // timeout, 未存活, 抢占
+        // 让出控制权, 让浏览器可以处理其他事件, 减少冲突的概率
+        await delay()
         return await this.preemptMaster(true)
       }
     } else {
-      console.log('preempt master')
+      console.log('preempt master', this.name)
       this.setItem('master', this.current)
       await new Promise(res => {
         let fullfilled = false
@@ -332,7 +342,10 @@ export default class StorageTransport extends EventEmmiter implements Transport 
     for (let i = 0; i < retryTimes; i++) {
       try {
         currentMaster = this.currentMaster
-        await this.callInternal(this.currentMaster!, INNER_CALL.CHECK_ALIVE, [], 1000)
+        const res: CheckAliveResponse = await this.callInternal(this.currentMaster!, INNER_CALL.CHECK_ALIVE, [], 1000)
+        if (res.status === 'correction') {
+          this.updateMaster(this.getItem('master'))
+        }
         this.masterHeartBeat()
         break
       } catch (err) {

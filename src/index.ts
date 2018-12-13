@@ -10,7 +10,7 @@ const defaultOptions = {
 
 export default function create(
   name: string,
-  options: {
+  options?: {
     useStorage?: boolean
   },
 ): Transport {

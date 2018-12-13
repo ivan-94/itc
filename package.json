@@ -1,6 +1,6 @@
 {
   "name": "@carney520/itc",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "description": "inter-tabs-communication",
   "main": "dist/index.js",
   "scripts": {
