@@ -51,18 +51,10 @@ export const MAX_TRY_TIME = 4
 
 export default class WorkerTransport extends EventEmitter implements Transport {
   static isSupport = !!(window.btoa && window.SharedWorker)
-  id: number = 0
   private tryTimes: number = 0
   private currentMaster?: Peer
   private peers: Peer[] = []
   private worker?: SharedWorker.SharedWorker
-
-  private get current() {
-    return {
-      id: this.id,
-      name: this.name,
-    }
-  }
 
   constructor(name: string) {
     super(name)

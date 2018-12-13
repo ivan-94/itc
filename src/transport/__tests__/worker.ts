@@ -560,12 +560,17 @@ describe('test worker peer', () => {
 
       // broadcast
       transport.send(2)
-      expect(port.lastMessage()).toMatchObject({ type: EVENTS.MESSAGE, data: 2, target: '*', source: peer1 })
+      expect(port.lastMessage()).toMatchObject({
+        type: EVENTS.MESSAGE,
+        data: { data: 2, source: transport.current },
+        target: '*',
+        source: peer1,
+      })
       ;[1, '2', true, { a: 1 }, []].forEach(d => {
         transport.send(d, peer2)
         expect(port.lastMessage()).toMatchObject({
           type: EVENTS.MESSAGE,
-          data: d,
+          data: { data: d, source: transport.current },
           source: peer1,
         })
       })

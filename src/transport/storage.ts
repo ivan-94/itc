@@ -47,7 +47,6 @@ export const ZOOMBIE_THRESHOLD = 4000
 const EVENT_REGEXP = new RegExp(`^${NAMESPACE}\\.([^\\.]*)$`)
 
 export default class StorageTransport extends EventEmmiter implements Transport {
-  id = uuid()
   private masterHeartBeatTimer?: number
   private heartBeatTimer?: number
   private peers: PeerInfo[] = []
@@ -55,12 +54,9 @@ export default class StorageTransport extends EventEmmiter implements Transport 
   private pendingPreempt?: () => void
   private storage = window.localStorage
 
-  private get current(): Peer {
-    return { id: this.id, name: this.name }
-  }
-
   constructor(name: string, storage?: Storage) {
     super(name)
+    this.id = uuid()
     if (storage) {
       this.storage = storage
     }

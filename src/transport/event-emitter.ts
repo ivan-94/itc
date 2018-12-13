@@ -18,9 +18,14 @@ export interface CallResponse {
 let uid = 0
 
 export default abstract class EventEmitter {
+  id: string | number = 0
   name: string
   ready: boolean = false
   destroyed: boolean = false
+  get current(): Peer {
+    return { id: this.id, name: this.name }
+  }
+
   private queue: { [name: string]: Array<Handler> } = {}
   private defaultTimeout: number = 3000
   private callbacks: {
@@ -99,7 +104,7 @@ export default abstract class EventEmitter {
       return
     }
 
-    this.postMessage(peer, { type: EVENTS.MESSAGE, data })
+    this.postMessage(peer, { type: EVENTS.MESSAGE, data: { data, source: this.current } })
   }
 
   /**

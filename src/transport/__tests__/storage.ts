@@ -546,7 +546,7 @@ describe('storage transport', () => {
       // broadcast
       transport.send(2)
       expect(getLastMessage()).toMatchObject({
-        value: { data: { type: EVENTS.MESSAGE, data: 2 }, target: '*', source: peer1 },
+        value: { data: { type: EVENTS.MESSAGE, data: { data: 2 } }, target: '*', source: peer1 },
       })
       ;[1, '2', true, { a: 1 }, []].forEach(d => {
         transport.send(d, peer2)
@@ -554,7 +554,7 @@ describe('storage transport', () => {
           value: {
             data: {
               type: EVENTS.MESSAGE,
-              data: d,
+              data: { data: d },
             },
             source: peer1,
           },

@@ -5,10 +5,16 @@ export interface Peer {
   name: string
 }
 
+export interface Message<T = any> {
+  data: T
+  source: Peer
+}
+
 export interface Transport {
   // meta datas
   readonly name?: string
   readonly destroyed: boolean
+  readonly current: Peer
   setCallTimeout(time: number): void
   /**
    * listen message | master event
@@ -16,7 +22,7 @@ export interface Transport {
   on(event: 'ready', handler: () => void): Disposer
   on(event: 'master', handler: () => void): Disposer
   on(event: 'masterlose', handler: () => void): Disposer
-  on(event: 'message', handler: (data: any) => void): Disposer
+  on(event: 'message', handler: (data: Message) => void): Disposer
   on(event: 'peerupdate', handler: (data: Peer[]) => void): Disposer
   on(event: 'masterupdate', handler: (data: Peer) => void): Disposer
   /**
