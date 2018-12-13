@@ -1,0 +1,30 @@
+body {
+  margin: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  height: 100%;
+}
+
+.peer-container {
+  margin: 10px;
+  border: 1px solid gray;
+  height: 400px;
+  flex-basis: 25%;
+  flex: 1;
+}

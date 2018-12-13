@@ -649,6 +649,10 @@
     lodash "^4.17.10"
     to-fast-properties "^2.0.0"
 
+"@carney520/itc@^0.2.0":
+  version "0.2.0"
+  resolved "https://registry.npmjs.org/@carney520/itc/-/itc-0.2.0.tgz#de67dc445c1f1325b9a4b1c3af989284d3ef249c"
+
 "@csstools/convert-colors@^1.4.0":
   version "1.4.0"
   resolved "https://registry.npmjs.org/@csstools/convert-colors/-/convert-colors-1.4.0.tgz#ad495dc41b12e75d588c6db8b9834f08fa131eb7"

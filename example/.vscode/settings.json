@@ -1,8 +1,0 @@
-{
-  "json.schemas": [
-    {
-      "fileMatch": ["package.json"],
-      "url": "./node_modules/@gdjiami/cli/lib/package.option.schema.json"
-    }
-  ]
-}
