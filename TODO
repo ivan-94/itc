@@ -1,8 +1,9 @@
-[] localStorage fallback
+[*] localStorage fallback
 [*] peer
 [] channel
-[] pending queue
-[] 可能因为调试误删
+[*] pending queue
+[*] 可能因为调试误删
 [] 移除async 依赖
-[] onmaster 如果是master立即返回
-[] worker masterlose
+[*] onmaster 如果是master立即返回
+[*] worker masterlose
+[] send 支持多个peer, 支持channel, 支持名称发送

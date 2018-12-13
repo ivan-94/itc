@@ -1,0 +1,3 @@
+{
+  "extends": ["@gdjiami/cli/lib/tslint.json"]
+}
