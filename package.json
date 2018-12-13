@@ -1,11 +1,12 @@
 {
   "name": "@carney520/itc",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "inter-tabs-communication",
   "main": "dist/index.js",
   "scripts": {
     "build": "node ./build",
-    "test": "jest"
+    "test": "jest",
+    "deploy": "gh-pages -d example/dist"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org",
@@ -41,6 +42,7 @@
     "@types/jest": "^23.3.10",
     "@types/node": "^10.12.12",
     "@types/sharedworker": "^0.0.28",
+    "gh-pages": "^2.0.1",
     "husky": "^1.2.0",
     "jest": "^23.6.0",
     "prettier": "^1.15.3",
