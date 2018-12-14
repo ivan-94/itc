@@ -15,5 +15,5 @@
     "resolveJsonModule": true,
     "typeRoots": ["types", "node_modules/@types"]
   },
-  "exclude": ["node_modules", "dist", "**/__tests__/*", "**/__mocks__/*", "example"]
+  "exclude": ["node_modules", "dist", "example"]
 }
