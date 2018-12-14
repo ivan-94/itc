@@ -147,7 +147,7 @@ describe('storage transport', () => {
       key: '_ITC_.message',
       value: {
         target: '*',
-        data: { type: EVENTS.DESTORY },
+        data: { type: EVENTS.DESTROY },
       },
     })
     expect(destroyHandle).toBeCalled()
@@ -198,7 +198,7 @@ describe('storage transport', () => {
         desc                     | target   | source   | type                    | data                                         | expected
         ${`EVENTS.PING`}         | ${peer1} | ${peer2} | ${EVENTS.PING}          | ${null}                                      | ${true}
         ${`EVENTS.PONG`}         | ${peer1} | ${peer2} | ${EVENTS.PONG}          | ${peer2}                                     | ${true}
-        ${`EVENTS.DESTORY`}      | ${peer1} | ${peer2} | ${EVENTS.DESTORY}       | ${peer2}                                     | ${true}
+        ${`EVENTS.DESTROY`}      | ${peer1} | ${peer2} | ${EVENTS.DESTROY}       | ${peer2}                                     | ${true}
         ${`EVENTS.CALL`}         | ${peer1} | ${peer2} | ${EVENTS.CALL}          | ${{ data: { id: 1, name: 'foo' } }}          | ${true}
         ${`EVENTS.CALL_REPONSE`} | ${peer1} | ${peer2} | ${EVENTS.CALL_RESPONSE} | ${{ data: { id: 1, name: 'foo', data: 1 } }} | ${true}
         ${`EVENTS.MESSAGE`}      | ${peer1} | ${peer2} | ${EVENTS.MESSAGE}       | ${1}                                         | ${true}
@@ -433,11 +433,11 @@ describe('storage transport', () => {
       // @ts-ignore
       const getPeers = () => t.peers
 
-      mockStorageMessage(peer1, { id: 10, name: 'unknown' }, EVENTS.DESTORY, undefined)
+      mockStorageMessage(peer1, { id: 10, name: 'unknown' }, EVENTS.DESTROY, undefined)
       expect(peerupdateHandle).not.toBeCalled()
       expect(getPeers()).toMatchObject([peer2, peer3])
 
-      mockStorageMessage(peer1, peer2, EVENTS.DESTORY, undefined)
+      mockStorageMessage(peer1, peer2, EVENTS.DESTROY, undefined)
       expect(peerupdateHandle).toBeCalled()
       expect(getPeers()).toMatchObject([peer3])
     })

@@ -11,7 +11,7 @@ export interface Message<T = any> {
 }
 
 export interface Transport {
-  // meta datas
+  // meta data
   readonly name?: string
   readonly destroyed: boolean
   readonly current: Peer
@@ -60,7 +60,7 @@ export interface Transport {
   getPeers(): Promise<Peer[]>
 }
 
-export interface MesssagePayload<T = any> {
+export interface MessagePayload<T = any> {
   type: string
   data?: T
 }
@@ -71,7 +71,7 @@ export const EVENTS = {
   PONG: 'PONG',
   PING: 'PING',
   BECOME_MASTER: 'BECOME_MASTER',
-  DESTORY: 'DESTROY',
+  DESTROY: 'DESTROY',
   MESSAGE: 'MESSAGE',
   UPDATE_PEERS: 'UPDATE_PEERS',
   UPDATE_MASTER: 'UPDATE_MASTER',

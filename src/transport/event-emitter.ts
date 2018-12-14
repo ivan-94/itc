@@ -1,4 +1,4 @@
-import { Peer, BroadcastPeer, MesssagePayload, EVENTS, ERRORS } from './transport'
+import { Peer, BroadcastPeer, MessagePayload, EVENTS, ERRORS } from './transport'
 
 export type Handler = (data: any) => void
 type CallHandler = (peer: Peer, ...args: any[]) => Promise<any>
@@ -128,7 +128,7 @@ export default abstract class EventEmitter {
   }
 
   abstract isMaster(): Promise<boolean>
-  protected abstract postMessage(peer: Peer, message: MesssagePayload): void
+  protected abstract postMessage(peer: Peer, message: MessagePayload): void
 
   protected waitReady() {
     return new Promise(res => {
@@ -174,7 +174,7 @@ export default abstract class EventEmitter {
         args,
       }
 
-      const payload: MesssagePayload<CallPayload> = {
+      const payload: MessagePayload<CallPayload> = {
         type: EVENTS.CALL,
         data: {
           name,
@@ -215,7 +215,7 @@ export default abstract class EventEmitter {
    */
   protected responseInternal(peer: Peer, message: CallPayload) {
     const { id, name, args } = message
-    const payload: MesssagePayload<CallResponse> = {
+    const payload: MessagePayload<CallResponse> = {
       type: EVENTS.CALL_RESPONSE,
       data: { id, name },
     }

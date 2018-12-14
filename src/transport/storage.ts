@@ -19,8 +19,8 @@
  */
 import { uuid, delay, getRandomIntInclusive, objEquals } from '../utils'
 
-import { Transport, Peer, MesssagePayload, BroadcastPeer, EVENTS, INNER_CALL, ERRORS } from './transport'
-import EventEmmiter from './event-emitter'
+import { Transport, Peer, MessagePayload, BroadcastPeer, EVENTS, INNER_CALL, ERRORS } from './transport'
+import EventEmitter from './event-emitter'
 
 export interface PeerInfo extends Peer {
   /**
@@ -32,7 +32,7 @@ export interface PeerInfo extends Peer {
 export interface StoragePayload<T = any> {
   target: string
   source: Peer
-  data: MesssagePayload<T>
+  data: MessagePayload<T>
 }
 
 export type CheckAliveResponse = { status: 'ok' | 'correction' }
@@ -46,7 +46,7 @@ export const ZOOMBIE_THRESHOLD = 4000
  */
 const EVENT_REGEXP = new RegExp(`^${NAMESPACE}\\.([^\\.]*)$`)
 
-export default class StorageTransport extends EventEmmiter implements Transport {
+export default class StorageTransport extends EventEmitter implements Transport {
   private masterHeartBeatTimer?: number
   private heartBeatTimer?: number
   private peers: PeerInfo[] = []
@@ -71,7 +71,7 @@ export default class StorageTransport extends EventEmmiter implements Transport 
     }
 
     if (this.ready) {
-      this.postMessage(BroadcastPeer, { type: EVENTS.DESTORY })
+      this.postMessage(BroadcastPeer, { type: EVENTS.DESTROY })
     }
 
     window.removeEventListener('storage', this.onStorage)
@@ -182,7 +182,7 @@ export default class StorageTransport extends EventEmmiter implements Transport 
         break
       case EVENTS.PONG:
         return this.updatePeer(source)
-      case EVENTS.DESTORY:
+      case EVENTS.DESTROY:
         this.removePeer(source)
         break
       case EVENTS.CALL:
@@ -446,7 +446,7 @@ export default class StorageTransport extends EventEmmiter implements Transport 
     )
   }
 
-  protected postMessage(peer: Peer, data: MesssagePayload) {
+  protected postMessage(peer: Peer, data: MessagePayload) {
     if (this.destroyed) {
       return
     }

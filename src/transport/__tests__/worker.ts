@@ -64,7 +64,7 @@ class MockPort implements MessagePort {
   }
 
   destroy() {
-    this.mockResponse({ type: EVENTS.DESTORY })
+    this.mockResponse({ type: EVENTS.DESTROY })
   }
 
   mockResponse(data: any) {
@@ -582,7 +582,7 @@ describe('test worker peer', () => {
       transport.destroy()
       expect(destroyHandle).toBeCalled()
       expect(worker.port.messageHandle).toBeUndefined()
-      expect(worker.port.lastMessage()).toMatchObject({ type: EVENTS.DESTORY })
+      expect(worker.port.lastMessage()).toMatchObject({ type: EVENTS.DESTROY })
       ;['getPeers', 'getMaster', 'isMaster', 'send', 'call'].forEach(name => {
         expect(() => {
           // @ts-ignore

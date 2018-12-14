@@ -1,8 +1,8 @@
-import { Transport, Peer, MesssagePayload, Disposer, Worker, Storage } from './transport'
+import { Transport, Peer, MessagePayload, Disposer, Worker, Storage } from './transport'
 
 let instance: Transport
 
-export { Transport, Peer, Disposer, Worker, MesssagePayload }
+export { Transport, Peer, Disposer, Worker, MessagePayload }
 
 const defaultOptions = {
   useStorage: false,

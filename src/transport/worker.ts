@@ -4,7 +4,7 @@
  */
 import EventEmitter from './event-emitter'
 import { hash } from '../utils'
-import { Transport, MesssagePayload, Peer, EVENTS } from './transport'
+import { Transport, MessagePayload, Peer, EVENTS } from './transport'
 
 declare global {
   interface Window {
@@ -12,7 +12,7 @@ declare global {
   }
 }
 
-export interface WorkerPayload extends MesssagePayload {
+export interface WorkerPayload extends MessagePayload {
   target: string | number
   source: Peer
 }
@@ -38,7 +38,7 @@ export interface ItcWorker {
   removePort(port: ExtendedPort): void
   getPeers(port: ExtendedPort): Peer[]
   updatePeer(currentPort?: ExtendedPort): void
-  broadcast(data: MesssagePayload, source?: ExtendedPort): void
+  broadcast(data: MessagePayload, source?: ExtendedPort): void
   postMessage(data: WorkerPayload, source?: ExtendedPort): void
 }
 
@@ -87,7 +87,7 @@ export default class WorkerTransport extends EventEmitter implements Transport {
 
     if (this.worker) {
       this.worker.port.removeEventListener('message', this.onMessage)
-      this.postMessage(WorkerPeer, { type: EVENTS.DESTORY })
+      this.postMessage(WorkerPeer, { type: EVENTS.DESTROY })
       this.worker = undefined
     }
 
@@ -183,7 +183,7 @@ export default class WorkerTransport extends EventEmitter implements Transport {
     }
   }
 
-  protected postMessage(peer: Peer, data: MesssagePayload) {
+  protected postMessage(peer: Peer, data: MessagePayload) {
     if (this.destroyed) {
       return
     }
@@ -272,7 +272,7 @@ export function workerSource(events: typeof EVENTS, scope: SharedWorker.SharedWo
         })
     }
 
-    broadcast(data: MesssagePayload, source?: ExtendedPort) {
+    broadcast(data: MessagePayload, source?: ExtendedPort) {
       this.ports.filter(p => p !== source).forEach(port => port.postMessage(data))
     }
 
@@ -342,7 +342,7 @@ export function workerSource(events: typeof EVENTS, scope: SharedWorker.SharedWo
               // forward to other ports
               this.postMessage(message, port)
               break
-            case events.DESTORY:
+            case events.DESTROY:
               this.removePort(port)
               break
             case events.INITIAL:
