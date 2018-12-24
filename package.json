@@ -1,6 +1,6 @@
 {
   "name": "@carney520/itc",
-  "version": "0.2.2",
+  "version": "0.2.4",
   "description": "inter-tabs-communication",
   "main": "dist/index.js",
   "scripts": {
@@ -13,7 +13,8 @@
     "access": "public"
   },
   "files": [
-    "dist"
+    "dist",
+    "worker-script.js"
   ],
   "author": "ivan",
   "license": "MIT",

@@ -12,6 +12,7 @@ export default function create(
   name: string,
   options?: {
     useStorage?: boolean
+    url?: string
   },
 ): Transport {
   options = { ...defaultOptions, ...(options || {}) }
@@ -19,5 +20,7 @@ export default function create(
     return instance
   }
 
-  return (instance = (options.useStorage || !Worker.isSupport ? new Storage(name) : new Worker(name)) as Transport)
+  return (instance = (options.useStorage || !Worker.isSupport
+    ? new Storage(name)
+    : new Worker(name, options.url)) as Transport)
 }

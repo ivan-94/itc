@@ -1,5 +1,5 @@
 import EventEmitter, { CallPayload, CallResponse } from '../event-emitter'
-import { Peer, MesssagePayload, EVENTS, ERRORS } from '../transport'
+import { Peer, MessagePayload, EVENTS, ERRORS } from '../transport'
 import { delay } from './helper'
 
 const peer1 = { id: 1, name: 'peer1' }
@@ -89,8 +89,8 @@ describe('test event listener', () => {
 
 describe('test ready and detroy', () => {
   class TestReady extends EventEmitter {
-    messages: Array<{ peer: Peer; message: MesssagePayload }> = []
-    postMessage(peer: Peer, message: MesssagePayload) {
+    messages: Array<{ peer: Peer; message: MessagePayload }> = []
+    postMessage(peer: Peer, message: MessagePayload) {
       this.messages.push({ peer, message })
     }
     isMaster() {
@@ -172,7 +172,7 @@ describe('test call', () => {
       super(name)
     }
 
-    postMessage(peer: Peer, message: MesssagePayload) {
+    postMessage(peer: Peer, message: MessagePayload) {
       this.mockTransport(peer, message)
     }
 
