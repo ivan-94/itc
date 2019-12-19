@@ -3,7 +3,7 @@
 `Inter-Tabs-Communication` 跨浏览器 Tab/iframe 通信. 基于`SharedWorker`, 对于不支持`SharedWorker`的浏览器
 将回退为`StorageEvent`方案.
 
-[EXAMPLE](https://carney520.github.io/itc/)
+[EXAMPLE](https://ivan-94.github.io/itc/)
 
 ## 安装
 
